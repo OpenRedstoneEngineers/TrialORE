@@ -1,5 +1,5 @@
 name: TrialORE
-version: 1.0
+version: 1.1
 main: org.openredstone.trialore.TrialOre
 api-version: 1.20
 depend: [LuckPerms]

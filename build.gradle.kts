@@ -47,14 +47,15 @@ java {
 tasks.shadowJar {
     relocate("co.aikar.commands", "trialore.acf")
     relocate("co.aikar.locales", "trialore.locales")
+
+    relocate("com.fasterxml.jackson", "org.openredstone.lib.jackson")
     dependencies {
-        exclude(
-            dependency(
-                "net.luckperms:api:.*"
-            )
-        )
+        exclude(dependency("net.luckperms:api:.*"))
+        exclude(dependency("io.papermc.paper:paper-api:.*"))
     }
+    archiveClassifier.set("")
 }
+
 
 tasks.build {
     dependsOn(tasks.shadowJar)

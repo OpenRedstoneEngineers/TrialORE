@@ -82,23 +82,30 @@ class TrialCommand(
     fun onStart(player: Player, @Single target: String, @Single app: String) {
         val testificate = trialORE.server.onlinePlayers.firstOrNull { it.name == target }
             ?: throw TrialOreException("That individual is not online and cannot be trialed")
-        if (trialORE.trialMapping.filter { (_, meta) ->
-            meta.first == testificate.uniqueId
-        }.isNotEmpty()) {
-            throw TrialOreException("That individual is already trialing")
+        val tests = trialORE.database.getTests(testificate.uniqueId)
+        tests.forEachIndexed { index, testid ->
+            val testInfo = trialORE.database.getTestInfo(testid)
+            if (testInfo?.passed ?: false) {
+                if (trialORE.trialMapping.filter { (_, meta) ->
+                        meta.first == testificate.uniqueId
+                    }.isNotEmpty()) {
+                    throw TrialOreException("That individual is already trialing")
+                }
+                if (trialORE.getParent(testificate.uniqueId) != trialORE.config.studentGroup) {
+                    throw TrialOreException("That individual is ineligible for trial due to rank")
+                }
+                if (player.uniqueId == testificate.uniqueId) {
+                    throw TrialOreException("You cannot trial yourself")
+                }
+                if (!app.startsWith("https://discourse.openredstone.org/")) {
+                    throw TrialOreException("Invalid app: $app")
+                }
+                player.renderMessage("Starting trial of ${testificate.name}")
+                testificate.renderMessage("Starting trial with ${player.name}")
+                trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
+            }
         }
-        if (trialORE.getParent(testificate.uniqueId) != trialORE.config.studentGroup) {
-            throw TrialOreException("That individual is ineligible for trial due to rank")
-        }
-        if (player.uniqueId == testificate.uniqueId) {
-            throw TrialOreException("You cannot trial yourself")
-        }
-        if (!app.startsWith("https://discourse.openredstone.org/")) {
-            throw TrialOreException("Invalid app: $app")
-        }
-        player.renderMessage("Starting trial of ${testificate.name}")
-        testificate.renderMessage("Starting trial with ${player.name}")
-        trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
+        player.renderMiniMessage("<red>Target has not passed the test yet.")
     }
 
     @Subcommand("note")
