@@ -189,7 +189,7 @@ class TrialOre : JavaPlugin(), Listener {
         } else {
             setLpParent(testificate, config.studentGroup)
         }
-        sendReport(database.getTrialInfo(trialId), database.getTrialCount(testificate))
+        sendReport(database.getTrialInfo(trialId, database.getTrialCount(testificate))) // jank
     }
 
     fun getParent(uuid: UUID): String? = luckPerms.userManager.getUser(uuid)?.primaryGroup
@@ -207,10 +207,10 @@ class TrialOre : JavaPlugin(), Listener {
         }
     }
 
-    private fun sendReport(trialInfo: TrialInfo, trialCount: Int) {
+    private fun sendReport(trialInfo: TrialInfo) {
         val lines = mutableListOf(
             "**Trialer**: ${database.uuidToUsernameCache[trialInfo.trialer]}",
-            "**Attempt**: $trialCount",
+            "**Attempt**: ${trialInfo.attempt}",
             "**Start**: <t:${trialInfo.start}:F>",
             "**End**: <t:${trialInfo.end}:F>",
             "**Notes**:"

@@ -1,7 +1,6 @@
 package org.openredstone.trialore
 
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.util.*
 
@@ -38,7 +37,7 @@ data class TrialInfo(
     val end: Int,
     val notes: List<String>,
     val passed: Boolean,
-    val attempt: Int = 0
+    val attempt: Int,
 )
 
 fun now() = System.currentTimeMillis().floorDiv(1000).toInt()
@@ -76,36 +75,44 @@ class Storage(
         }
     }
 
-    fun getTrials(testificate: UUID): List<Int> = transaction(database) {
-        Trial.selectAll().where {
-            Trial.testificate eq testificate.toString()
-        }.map {
-            it[Trial.id]
-        }
+    fun getTrials(testificate: UUID): List<TrialInfo> = transaction(database) {
+        val notes = Trial.innerJoin(Note) { Trial.id eq Note.trial_id }
+            .select(Trial.id, Note.value)
+            .where { Trial.testificate eq testificate.toString() }
+            .orderBy(Note.id)
+            .groupBy({ it[Trial.id] }) { it[Note.value] }
+        Trial.selectAll()
+            .where { Trial.testificate eq testificate.toString() }
+            .orderBy(Trial.id)
+            .mapIndexed { i, row -> row.toTrialInfo(notes[row[Trial.id]] ?: emptyList(), i + 1) }
     }
 
-    fun getTrialInfo(trialId: Int): TrialInfo = transaction(database) {
-        val notes = Note.selectAll().where {
-            Note.trial_id eq trialId
-        }.map { it[Note.value] }
-        val resultRow = Trial.selectAll().where {
-            Trial.id eq trialId
-        }.firstOrNull()
-        TrialInfo(
-            UUID.fromString(resultRow!![Trial.trialer]),
-            UUID.fromString(resultRow[Trial.testificate]),
-            resultRow[Trial.app] ?: "No app in database. This is likely a bug",
-            resultRow[Trial.start],
-            resultRow[Trial.end] ?: 0,
-            notes,
-            resultRow[Trial.passed] ?: false
-        )
+    fun getTrialInfo(trialId: Int, attempt: Int): TrialInfo = transaction(database) {
+        val notes = Note.selectAll()
+            .where { Note.trial_id eq trialId }
+            .orderBy(Note.id)
+            .map { it[Note.value] }
+        Trial.selectAll()
+            .where { Trial.id eq trialId }
+            .first()
+            .toTrialInfo(notes, attempt)
     }
+
+    private fun ResultRow.toTrialInfo(notes: List<String>, attempt: Int) = TrialInfo(
+        trialer = UUID.fromString(this[Trial.trialer]),
+        testificate = UUID.fromString(this[Trial.testificate]),
+        app = this[Trial.app] ?: "No app in database. This is a bug.",
+        start = this[Trial.start],
+        end = this[Trial.end] ?: 0,
+        notes = notes,
+        passed = this[Trial.passed] ?: false,
+        attempt = attempt,
+    )
 
     fun getTrialCount(testificate: UUID): Int = transaction(database) {
-        Trial.selectAll().where {
-            Trial.testificate eq testificate.toString()
-        }.count().toInt()
+        Trial.selectAll()
+            .where { Trial.testificate eq testificate.toString() }
+            .count().toInt()
     }
 
     fun insertNote(trialId: Int, note: String) = transaction(database) {
@@ -126,11 +133,11 @@ class Storage(
     }
 
     fun getNotes(trialId: Int): Map<Int, String> = transaction(database) {
-        return@transaction Note.selectAll().where {
-            Note.trial_id eq trialId
-        }.associate {
-            it[Note.id] to it[Note.value]
-        }
+        Note.selectAll()
+            .where { Note.trial_id eq trialId }
+            .orderBy(Note.id)
+            // associate preserves iteration order
+            .associate { it[Note.id] to it[Note.value] }
     }
 
     fun ensureCachedUsername(user: UUID, username: String) = transaction(database) {

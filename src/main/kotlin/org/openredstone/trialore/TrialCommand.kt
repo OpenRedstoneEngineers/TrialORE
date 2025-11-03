@@ -53,8 +53,7 @@ class TrialCommand(
         }
         val trials = trialORE.database.getTrials(testificate)
         player.renderMiniMessage("<gray>$target has been in ${trials.size} trials")
-        trials.forEachIndexed { index, trial ->
-            val trialInfo = trialORE.database.getTrialInfo(trial)
+        for (trialInfo in trials) {
             val state = if (trialInfo.passed) {
                 "<green>Passed</green>"
             } else {
@@ -64,7 +63,7 @@ class TrialCommand(
             val timestamp = getRelativeTimestamp(startTime)
             val trialer = trialORE.database.uuidToUsernameCache[trialInfo.trialer] ?: "Invalid UUID??"
             player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
-                " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${index+1}, $timestamp</hover>:")
+                " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${trialInfo.attempt}, $timestamp</hover>:")
             if (trialInfo.notes.isEmpty()) {
                 player.renderMiniMessage("<i>No notes")
             }
