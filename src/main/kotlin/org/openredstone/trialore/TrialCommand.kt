@@ -53,8 +53,7 @@ class TrialCommand(
         }
         val trials = trialORE.database.getTrials(testificate)
         player.renderMiniMessage("<gray>$target has been in ${trials.size} trials")
-        trials.forEachIndexed { index, trial ->
-            val trialInfo = trialORE.database.getTrialInfo(trial)
+        for (trialInfo in trials) {
             val state = if (trialInfo.passed) {
                 "<green>Passed</green>"
             } else {
@@ -64,7 +63,7 @@ class TrialCommand(
             val timestamp = getRelativeTimestamp(startTime)
             val trialer = trialORE.database.uuidToUsernameCache[trialInfo.trialer] ?: "Invalid UUID??"
             player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
-                " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${index+1}, $timestamp</hover>:")
+                " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${trialInfo.attempt}, $timestamp</hover>:")
             if (trialInfo.notes.isEmpty()) {
                 player.renderMiniMessage("<i>No notes")
             }
@@ -82,30 +81,27 @@ class TrialCommand(
     fun onStart(player: Player, @Single target: String, @Single app: String) {
         val testificate = trialORE.server.onlinePlayers.firstOrNull { it.name == target }
             ?: throw TrialOreException("That individual is not online and cannot be trialed")
-        val tests = trialORE.database.getTests(testificate.uniqueId)
-        tests.forEachIndexed { index, testid ->
-            val testInfo = trialORE.database.getTestInfo(testid)
-            if (testInfo?.passed ?: false) {
-                if (trialORE.trialMapping.filter { (_, meta) ->
-                        meta.first == testificate.uniqueId
-                    }.isNotEmpty()) {
-                    throw TrialOreException("That individual is already trialing")
-                }
-                if (trialORE.getParent(testificate.uniqueId) != trialORE.config.studentGroup) {
-                    throw TrialOreException("That individual is ineligible for trial due to rank")
-                }
-                if (player.uniqueId == testificate.uniqueId) {
-                    throw TrialOreException("You cannot trial yourself")
-                }
-                if (!app.startsWith("https://discourse.openredstone.org/")) {
-                    throw TrialOreException("Invalid app: $app")
-                }
-                player.renderMessage("Starting trial of ${testificate.name}")
-                testificate.renderMessage("Starting trial with ${player.name}")
-                trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
-            }
+        if (trialORE.trialMapping.filter { (_, meta) ->
+                meta.first == testificate.uniqueId
+            }.isNotEmpty()) {
+            throw TrialOreException("That individual is already trialing")
         }
-        player.renderMiniMessage("<red>Target has not passed the test yet.")
+        if (trialORE.getParent(testificate.uniqueId) != trialORE.config.studentGroup) {
+            throw TrialOreException("That individual is ineligible for trial due to rank")
+        }
+        if (player.uniqueId == testificate.uniqueId) {
+            throw TrialOreException("You cannot trial yourself")
+        }
+        if (!app.startsWith("https://discourse.openredstone.org/")) {
+            throw TrialOreException("Invalid app: $app")
+        }
+        if (!trialORE.database.hasPassedTheTest(testificate.uniqueId)) {
+            throw TrialOreException("Target has not passed the test yet")
+        }
+
+        player.renderMessage("Starting trial of ${testificate.name}")
+        testificate.renderMessage("Starting trial with ${player.name}")
+        trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
     }
 
     @Subcommand("note")

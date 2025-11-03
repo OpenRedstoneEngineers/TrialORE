@@ -17,32 +17,24 @@ class TestCommand(
     @Subcommand("start")
     @Conditions("notTesting")
     @Description("Take a test")
-    fun onStart(player: Player) {
-        val testificate = player
-
+    fun onStart(testificate: Player) {
         if (trialORE.testMapping.containsKey(testificate.uniqueId)) {
             throw TrialOreException("You are already testing. This is 99.9% a Bug. Contact Nick :D")
         }
-        if (trialORE.database.didPass(testificate.uniqueId)) {
-            player.renderMiniMessage("<green>You already passed the test!")
+        if (trialORE.database.hasPassedTheTest(testificate.uniqueId)) {
+            testificate.renderMiniMessage("<green>You already passed the test!")
             return
         }
         val tests = trialORE.database.getTests(testificate.uniqueId)
-
         val now = System.currentTimeMillis()
         val lastThreeTests = tests.takeLast(3)
         if (lastThreeTests.size == 3) {
-            val lastThreeWithin24h = lastThreeTests.all { test ->
-                val testInfo = trialORE.database.getTestInfo(test)
-                    ?: run {
-                        player.sendMessage("Could not get last 3 tests... Report this to Staff.")
-                        return@all false
-                    }
+            val lastThreeWithin24h = lastThreeTests.all { testInfo ->
                 val startTimeMs = testInfo.start.toLong() * 1000L
                 now - startTimeMs <= 24 * 60 * 60 * 1000L
             }
             if (lastThreeWithin24h) {
-                player.renderMiniMessage("<red>Warning: Your last 3 tests were all taken within the last 24 hours! Do /test history to see them.</red>")
+                testificate.renderMiniMessage("<red>Warning: Your last 3 tests were all taken within the last 24 hours! Do /test history to see them.</red>")
                 return
             }
         }
@@ -64,24 +56,20 @@ class TestCommand(
         }
         val tests = trialORE.database.getTests(testificate)
         player.renderMiniMessage("<gray>$target has taken ${tests.size} tests")
-        tests.forEachIndexed { index, test ->
-            val testInfo = trialORE.database.getTestInfo(test)
-            if (testInfo == null) {
-                player.sendMessage("Test id was null. If you are Nick, have fun. If not, report to Nick.")
-                return
+        for (testInfo in tests) {
+            if (!testInfo.passed) {
+                continue
             }
-            if (testInfo.passed) {
-                val startTime = testInfo.start.toLong()
-                val timestamp = getRelativeTimestamp(startTime)
-                val wrong = testInfo.wrong
-                val correct = 25 - wrong
-                val percentage = (correct.toDouble() / 25.toDouble()) * 100
-                val duration = testInfo.end.toLong() - startTime
-                var rotatingLight = ""
-                if (duration <= 45) { rotatingLight = ":rotating_light: :rotating_light: :rotating_light: Test done in ${duration}s"}
-                player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
-                        ", $wrong wrong Answers'>Test: ${index+1} (<green>${percentage}<white>), $timestamp</hover> $rotatingLight")
-            }
+            val startTime = testInfo.start.toLong()
+            val timestamp = getRelativeTimestamp(startTime)
+            val wrong = testInfo.wrong
+            val correct = 25 - wrong
+            val percentage = (correct.toDouble() / 25.toDouble()) * 100
+            val duration = testInfo.end.toLong() - startTime
+            var rotatingLight = ""
+            if (duration <= 45) { rotatingLight = ":rotating_light: :rotating_light: :rotating_light: Test done in ${duration}s"}
+            player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
+                ", $wrong wrong Answers'>Test: ${testInfo.attempt} (<green>${percentage}<white>), $timestamp</hover> $rotatingLight")
         }
     }
 
@@ -114,23 +102,20 @@ class TestCommand(
 
     @Subcommand("check")
     @CommandPermission("trialore.list")
-    @Description("Check if a User passed the test")
+    @Description("Check if a user passed the test")
     @CommandAlias("check")
     fun onCheck(player: Player, target: String) {
         val testificate = Bukkit.getOfflinePlayer(target)
         val tests = trialORE.database.getTests(testificate.uniqueId)
         if (tests.isEmpty()) {
-            player.renderMiniMessage("<red>Target has not been in any test.")
+            player.renderMiniMessage("<red>User <white>$target <red>has not been in any test.")
             return
         }
-        tests.forEachIndexed { index, testid ->
-            val testInfo = trialORE.database.getTestInfo(testid)
-            if (testInfo?.passed ?: false) {
-                player.renderMiniMessage("<green>Target passed the test!")
-                return
-            }
+        if (tests.any { it.passed }) {
+            player.renderMiniMessage("<green>User <white>$target <green>has passed the test!")
+            return
         }
-        player.renderMiniMessage("<red>Target has failed all their tests!")
+        player.renderMiniMessage("<red>User <white>$target <red>has failed all their tests!")
     }
 
     @Subcommand("history")
@@ -140,20 +125,11 @@ class TestCommand(
         val testificate = player.uniqueId
         val tests = trialORE.database.getTests(testificate)
         player.renderMiniMessage("<gray>You have taken ${tests.size} tests")
-        tests.forEachIndexed { index, testid ->
-            val testInfo = trialORE.database.getTestInfo(testid)
-            if (testInfo == null) {
-                player.sendMessage("Test id was null. Report this to Staff.")
-                return
-            }
-            var state = ""
-            var color = ""
-            if (testInfo.passed) {
-                state = "Passed"
-                color = "<green>"
+        tests.forEach { testInfo ->
+            val (state, color) = if (testInfo.passed) {
+                "Passed" to "<green>"
             } else {
-                state = "Failed"
-                color = "<red>"
+                "Failed" to "<red>"
             }
             val startTime = testInfo.start.toLong()
             val timestamp = getRelativeTimestamp(startTime)
@@ -161,7 +137,7 @@ class TestCommand(
             val correct = 25 - wrong
             val percentage = (correct.toDouble() / 25.toDouble()) * 100
             player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
-                    " (State: $color${state}<white>), with ${wrong} wrong Answers'><gray>Test ${index+1} (ID: $testid), $timestamp</hover>: $color$percentage%<gray>")
+                " (State: $color${state}<white>), with $wrong wrong Answers'><gray>Test ${testInfo.attempt}, $timestamp</hover>: $color$percentage%<gray>")
         }
     }
 

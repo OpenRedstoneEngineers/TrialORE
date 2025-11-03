@@ -106,61 +106,59 @@ class Storage(
         }[Test.id]
     }
 
-    fun getTrials(testificate: UUID): List<Int> = transaction(database) {
-        Query(
-            Trial, Trial.testificate eq testificate.toString()
-        ).map {
-            it[Trial.id]
-        }
+    fun getTrials(testificate: UUID): List<TrialInfo> = transaction(database) {
+        val notes = Trial.innerJoin(Note) { Trial.id eq Note.trial_id }
+            .select(Trial.id, Note.value)
+            .where { Trial.testificate eq testificate.toString() }
+            .groupBy({ it[Trial.id] }) { it[Note.value] }
+        Trial.selectAll()
+            .where { Trial.testificate eq testificate.toString() }
+            .map { it.toTrialInfo(notes[it[Trial.id]] ?: emptyList()) }
     }
 
-    fun getTests(testificate: UUID): List<Int> = transaction(database) {
-        Query(
-            Test, Test.testificate eq testificate.toString()
-        ).map {
-                it[Test.id]
-        }
+    fun getTests(testificate: UUID): List<TestInfo> = transaction(database) {
+        Test.selectAll()
+            .where { Test.testificate eq testificate.toString() }
+            .map(ResultRow::toTestInfo)
     }
 
     fun getTrialInfo(trialId: Int): TrialInfo = transaction(database) {
-        val notes = Note.selectAll().where {
-            Note.trial_id eq trialId
-        }.map { it[Note.value] }
-        val resultRow = Trial.selectAll().where {
-            Trial.id eq trialId
-        }.firstOrNull()
-        TrialInfo(
-            UUID.fromString(resultRow!![Trial.trialer]),
-            UUID.fromString(resultRow[Trial.testificate]),
-            resultRow[Trial.app] ?: "No app in database. This is likely a bug",
-            resultRow[Trial.start],
-            resultRow[Trial.end] ?: 0,
-            notes,
-            resultRow[Trial.passed] ?: false
-        )
+        val notes = Note.selectAll()
+            .where { Note.trial_id eq trialId }
+            .map { it[Note.value] }
+        Trial.selectAll()
+            .where { Trial.id eq trialId }
+            .first()
+            .toTrialInfo(notes)
     }
 
+    private fun ResultRow.toTrialInfo(notes: List<String>) = TrialInfo(
+        trialer = UUID.fromString(this[Trial.trialer]),
+        testificate = UUID.fromString(this[Trial.testificate]),
+        app = this[Trial.app] ?: "No app in database. This is a bug.",
+        start = this[Trial.start],
+        end = this[Trial.end] ?: 0,
+        notes = notes,
+        passed = this[Trial.passed] ?: false,
+    )
+
     fun getTestInfo(testId: Int): TestInfo? = transaction(database) {
-        val resultRow = Test.selectAll().where { Test.id eq testId }.firstOrNull() ?: return@transaction null
-        TestInfo(
-            UUID.fromString(resultRow[Test.testificate]),
-            resultRow[Test.start],
-            resultRow[Test.end] ?: 0,
-            resultRow[Test.passed],
-            resultRow[Test.wrong]
-        )
+        Test.selectAll()
+            .where { Test.id eq testId }
+            .firstOrNull()
+            ?.toTestInfo()
     }
 
     fun getTrialCount(testificate: UUID): Int = transaction(database) {
-        Trial.selectAll().where {
-            Trial.testificate eq testificate.toString()
-        }.count().toInt()
+        Trial.selectAll()
+            .where { Trial.testificate eq testificate.toString() }
+            .count().toInt()
     }
 
     fun getTestCount(testificate: UUID): Int = transaction(database) {
-        Test.selectAll().where {
-            Test.testificate eq testificate.toString()
-        }.count().toInt()
+        Test.selectAll()
+            .where { Test.testificate eq testificate.toString() }
+            .count().toInt()
     }
 
     fun insertNote(trialId: Int, note: String) = transaction(database) {
@@ -181,22 +179,16 @@ class Storage(
     }
 
     fun getNotes(trialId: Int): Map<Int, String> = transaction(database) {
-        return@transaction Note.selectAll().where {
-            Note.trial_id eq trialId
-        }.associate {
-            it[Note.id] to it[Note.value]
-        }
+        Note.selectAll()
+            .where { Note.trial_id eq trialId }
+            .associate { it[Note.id] to it[Note.value] }
     }
 
-    fun didPass(testificate: UUID) : Boolean {
-        val tests = getTests(testificate)
-        tests.forEachIndexed { index, testid ->
-            val testInfo = getTestInfo(testid)
-            if (testInfo?.passed ?: false) {
-                return true
-            }
-        }
-        return false
+    fun hasPassedTheTest(testificate: UUID) : Boolean = transaction(database) {
+        Test.select(Test.passed)
+            .where { (Test.testificate eq testificate.toString()) and (Test.passed eq true) }
+            .limit(1)
+            .empty().not()
     }
 
     fun ensureCachedUsername(user: UUID, username: String) = transaction(database) {
@@ -216,3 +208,11 @@ class Storage(
         uuidToUsernameCache = usernameToUuidCache.entries.associate{(k,v)-> v to k}
     }
 }
+
+private fun ResultRow.toTestInfo() = TestInfo(
+    testificate = UUID.fromString(this[Test.testificate]),
+    start = this[Test.start],
+    end = this[Test.end] ?: 0,
+    passed = this[Test.passed],
+    wrong = this[Test.wrong],
+)
