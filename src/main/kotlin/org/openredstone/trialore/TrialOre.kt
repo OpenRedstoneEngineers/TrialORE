@@ -19,6 +19,8 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
+import java.time.Duration
+import java.time.Instant
 import java.util.*
 import java.util.logging.Level
 
@@ -56,6 +58,8 @@ data class TestMeta(
     val session: TrialOre.TestSession
 )
 
+enum class TestFilter { PASS, FAIL, ANY }
+
 class TrialOre : JavaPlugin(), Listener {
     lateinit var database: Storage
     lateinit var luckPerms: LuckPerms
@@ -83,13 +87,13 @@ class TrialOre : JavaPlugin(), Listener {
                 }
             }
             commandConditions.addCondition("notTesting") {
-                // Condition "notTesting" will fail  if the person is taking a test
+                // Condition "notTesting" will fail if the person is taking a test
                 if (testMapping.containsKey(it.issuer.player.uniqueId)) {
                     throw TrialOreException("You are already taking a Test")
                 }
             }
             commandConditions.addCondition("testing") {
-                // Condition "notTesting" will fail  if the person is taking a test
+                // Condition "testing" will fail if the person is not taking a test
                 if (!testMapping.containsKey(it.issuer.player.uniqueId)) {
                     throw TrialOreException("You are not taking a Test")
                 }
@@ -104,6 +108,11 @@ class TrialOre : JavaPlugin(), Listener {
                     ?: throw TrialOreException("Invalid test mapping. This is likely a bug")
                 TestMeta(context.player.uniqueId, meta)
             }
+            commandContexts.registerContext(TestFilter::class.java) { context ->
+                TestFilter.valueOf(context.popFirstArg().uppercase())
+            }
+            commandCompletions.registerStaticCompletion("testFilter", TestFilter.entries.map { it.name.lowercase() })
+            commandCompletions.setDefaultCompletion("testFilter", TestFilter::class.java)
             commandCompletions.registerCompletion("usernameCache") { database.usernameToUuidCache.keys }
             registerCommand(TrialCommand(this@TrialOre, VERSION))
             registerCommand(TestCommand(this@TrialOre))
@@ -205,7 +214,7 @@ class TrialOre : JavaPlugin(), Listener {
         }
         testMapping.forEach { (testtaker, session) ->
             if (uuid == testtaker) {
-                endTest(testtaker, session.startingtime, false, 25)
+                endTest(testtaker, session.startTime, false, 25)
             }
         }
     }
@@ -232,13 +241,13 @@ class TrialOre : JavaPlugin(), Listener {
         sendReport(database.getTrialInfo(trialId), database.getTrialCount(testificate))
     }
 
-    fun endTest(testificate: UUID, startingtime: Int, passed: Boolean, wrong: Int): Int {
-        val testId = this.database.endTest(testificate, startingtime, passed, wrong)
+    fun endTest(testificate: UUID, startTime: Instant, passed: Boolean, wrong: Int): Int {
+        val testId = this.database.endTest(testificate, startTime, passed, wrong)
         this.testMapping.remove(testificate)
         val testInfo = database.getTestInfo(testId)
         if (testInfo?.wrong == 25) { return 0 }
         if ((config.sendFailedTests || passed) && testInfo != null)
-        sendTestReport(testInfo, database.getTestCount(testificate))
+        sendTestReport(testInfo)
         return testId
     }
 
@@ -268,15 +277,10 @@ class TrialOre : JavaPlugin(), Listener {
         trialInfo.notes.forEach { note ->
             lines.add("* $note")
         }
-        val result = if (trialInfo.passed) {
-            "*Passed*"
+        val (result, color) = if (trialInfo.passed) {
+            "*Passed*" to 0x5fff58
         } else {
-            "*Failed*"
-        }
-        val color = if(trialInfo.passed) {
-            0x5fff58
-        } else {
-            0xff5858
+            "*Failed*" to 0xff5858
         }
         val payload = mapOf(
             "embeds" to listOf(
@@ -297,24 +301,33 @@ class TrialOre : JavaPlugin(), Listener {
         khttp.post(config.webhook, json = payload)
     }
 
-    private fun sendTestReport(testInfo: TestInfo, testCount: Int) {
-        val correct = 25 - testInfo.wrong
-        val percentage = (correct.toDouble() / 25.toDouble()) * 100
-        var rotatingLight = ""
-        if (testInfo.end - testInfo.start <= 45 * 1000 ) { rotatingLight = ":rotating_light: :rotating_light: :rotating_light: <45 Seconds!!" }
+    private fun sendTestReport(testInfo: TestInfo) {
+        val start = testInfo.start
+        val end = testInfo.end
+        val wrong = testInfo.wrong
+        val includeSpeedWarning = true
+        // TODO factor out duplication (8 lines)
+        val duration = Duration.between(start, end)
+        val numQuestions = 25
+        val correct = numQuestions - wrong
+        val percentage = "%.1f".format(100 * correct.toDouble() / numQuestions.toDouble())
+        val speedLimit = Duration.ofSeconds(45)
+        val speedWarning = if (includeSpeedWarning && duration < speedLimit) {
+            ":rotating_light: :rotating_light: :rotating_light: Test done in ${duration.minSec()} (under ${speedLimit.minSec()})"
+        } else ""
         val lines = mutableListOf(
             "**Testificate**: ${database.uuidToUsernameCache[testInfo.testificate]}",
-            "**Attempt**: $testCount",
-            "**Start**: <t:${testInfo.start}:F>",
-            "**End**: <t:${testInfo.end}:F>",
+            "**Attempt**: ${testInfo.attempt}",
+            "**Start**: <t:${testInfo.start.toEpochMilli()}:F>",
+            "**End**: <t:${testInfo.end.toEpochMilli()}:F>",
             "**Wrong**: ${testInfo.wrong}",
-            "**Percentage**: ${"%.2f".format(percentage)}%",
-            rotatingLight
+            "**Percentage**: $percentage%",
+            speedWarning,
         )
-        val color = if(testInfo.passed) {
-            0x5fff58
+        val (result, color) = if (testInfo.passed) {
+            "*Passed*" to 0x5fff58
         } else {
-            0xff5858
+            "*Failed*" to 0xff5858
         }
         val payload = mapOf(
             "embeds" to listOf(
@@ -325,7 +338,7 @@ class TrialOre : JavaPlugin(), Listener {
                     "fields" to listOf(
                         mapOf(
                             "name" to "State",
-                            "value" to testInfo.passed
+                            "value" to result
                         )
                     )
                 )
@@ -352,7 +365,7 @@ class TrialOre : JavaPlugin(), Listener {
     }
 
     data class TestSession(
-        val startingtime: Int,
+        val startTime: Instant,
         val questions: List<Int>,
         var index: Int = 0,
         var currentAnswer: String = "",
@@ -364,9 +377,6 @@ class TrialOre : JavaPlugin(), Listener {
     private val rand = Random()
 
     fun startTest(testificate: UUID) {
-        // val testId = this.database.insertTest(testificate)
-        val startingtime = now()
-
         val categories = mutableListOf<Int>().apply {
             repeat(4) { add(1) }
             repeat(4) { add(2) }
@@ -376,7 +386,7 @@ class TrialOre : JavaPlugin(), Listener {
             repeat(3) { add(6) }
         }
         categories.shuffle(rand)
-        val session = TestSession(startingtime, categories)
+        val session = TestSession(Instant.now(), categories)
         this.testMapping[testificate] = session
         testSessions[testificate] = session
 
@@ -388,7 +398,7 @@ class TrialOre : JavaPlugin(), Listener {
     fun sendNextQuestion(player: Player, session: TestSession) {
         if (session.index >= session.questions.size) {
             val passed = session.wrong <= 2
-            val testId = endTest(player.uniqueId, session.startingtime, passed, session.wrong)
+            val testId = endTest(player.uniqueId, session.startTime, passed, session.wrong)
             testSessions.remove(player.uniqueId)
             if (passed) {
                 player.renderMiniMessage("<green>Test (${testId}) finished. Wrong: ${session.wrong}</green>")

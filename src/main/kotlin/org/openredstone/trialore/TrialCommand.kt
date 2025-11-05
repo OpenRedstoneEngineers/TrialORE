@@ -3,20 +3,22 @@ package org.openredstone.trialore
 import co.aikar.commands.BaseCommand
 import co.aikar.commands.annotation.*
 import org.bukkit.entity.Player
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
-fun getDate(timestamp: Long) = LocalDateTime.ofInstant(Instant.ofEpochSecond(timestamp), ZoneOffset.UTC)
+fun getDate(timestamp: Long) = getDate(Instant.ofEpochSecond(timestamp))
+fun getDate(timestamp: Instant) = LocalDateTime.ofInstant(timestamp, ZoneOffset.UTC)
 
-fun getRelativeTimestamp(unixTimestamp: Long): String {
-    val currentTime = LocalDateTime.now(ZoneOffset.UTC)
-    val eventTime = getDate(unixTimestamp)
+fun getRelativeTimestamp(unixTimestamp: Long): String =
+    Instant.ofEpochMilli(unixTimestamp).toRelativeTimestamp()
 
-    val difference = ChronoUnit.MINUTES.between(eventTime, currentTime)
-
+fun Instant.toRelativeTimestamp(): String {
+    val difference = ChronoUnit.MINUTES.between(this, Instant.now())
     return when {
+        difference < 0 -> "in the future :o"
         difference < 1 -> "just now"
         difference < 60 -> "$difference minutes ago"
         difference < 120 -> "an hour ago"
@@ -24,6 +26,8 @@ fun getRelativeTimestamp(unixTimestamp: Long): String {
         else -> "${difference / 1440} days ago"
     }
 }
+
+fun Duration.minSec(): String = "${toMinutes()}m ${toSecondsPart()}s"
 
 @CommandAlias("trial")
 @CommandPermission("trialore.trial")

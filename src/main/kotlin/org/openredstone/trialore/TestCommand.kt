@@ -4,6 +4,9 @@ import co.aikar.commands.BaseCommand
 import co.aikar.commands.annotation.*
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import java.time.Duration
+import java.time.Instant
+import java.util.UUID
 
 
 @CommandAlias("test")
@@ -26,12 +29,11 @@ class TestCommand(
             return
         }
         val tests = trialORE.database.getTests(testificate.uniqueId)
-        val now = System.currentTimeMillis()
         val lastThreeTests = tests.takeLast(3)
         if (lastThreeTests.size == 3) {
+            val threeDaysAgo = Instant.now() - Duration.ofDays(3)
             val lastThreeWithin24h = lastThreeTests.all { testInfo ->
-                val startTimeMs = testInfo.start.toLong() * 1000L
-                now - startTimeMs <= 24 * 60 * 60 * 1000L
+                testInfo.start.isAfter(threeDaysAgo)
             }
             if (lastThreeWithin24h) {
                 testificate.renderMiniMessage("<red>Warning: Your last 3 tests were all taken within the last 24 hours! Do /test history to see them.</red>")
@@ -43,111 +45,13 @@ class TestCommand(
         trialORE.startTest(testificate.uniqueId)
     }
 
-
-    @Subcommand("list")
-    @CommandPermission("trialore.list")
-    @Description("Get the info of an individual from past tests")
-    @CommandCompletion("@usernameCache")
-    fun onList(player: Player, @Single target: String) {
-        var testificate = trialORE.server.onlinePlayers.firstOrNull { it.name == target }?.uniqueId
-        if (testificate == null) {
-            testificate = trialORE.database.usernameToUuidCache[target]
-                ?: throw TrialOreException("Invalid target $target. Please provide an online player or UUID")
-        }
-        val tests = trialORE.database.getTests(testificate)
-        player.renderMiniMessage("<gray>$target has taken ${tests.size} tests")
-        for (testInfo in tests) {
-            if (!testInfo.passed) {
-                continue
-            }
-            val startTime = testInfo.start.toLong()
-            val timestamp = getRelativeTimestamp(startTime)
-            val wrong = testInfo.wrong
-            val correct = 25 - wrong
-            val percentage = (correct.toDouble() / 25.toDouble()) * 100
-            val duration = testInfo.end.toLong() - startTime
-            var rotatingLight = ""
-            if (duration <= 45) { rotatingLight = ":rotating_light: :rotating_light: :rotating_light: Test done in ${duration}s"}
-            player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
-                ", $wrong wrong Answers'>Test: ${testInfo.attempt} (<green>${percentage}<white>), $timestamp</hover> $rotatingLight")
-        }
-    }
-
-    @Subcommand("info")
-    @CommandPermission("trialore.list")
-    @Description("Check a user's test")
-    fun onInfo(player: Player, @Single id: Int) {
-        val testInfo = trialORE.database.getTestInfo(id)
-        if (testInfo == null) {
-            player.sendMessage("Test not existant. If you are Nick, have fun. If you believe this is an error, report to Nick.")
-            return
-        }
-        val startTime = testInfo.start.toLong()
-        val duration = testInfo.end.toLong() - startTime
-        var rotatingLight = ""
-        if (duration <= 45) { rotatingLight = ":rotating_light: :rotating_light: :rotating_light: Test done in ${duration}s"}
-        val timestamp = getRelativeTimestamp(startTime)
-        val wrong = testInfo.wrong
-        val testificate = testInfo.testificate
-        val correct = 25 - wrong
-        val percentage = (correct.toDouble() / 25.toDouble()) * 100
-        if (testInfo.passed) {
-            player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white> by $testificate" +
-                    ", $wrong wrong Answers'><green>Passed! <gray>Test: $id (<green>${percentage}<gray>), $timestamp</hover><white> $rotatingLight")
-        } else {
-            player.renderMiniMessage("<hover:show_text:'<red>Failed! At <gray>${getDate(startTime)}<white> by $testificate" +
-                    ", $wrong wrong Answers'><red>Failed! <gray>Test: $id (<red>${percentage}<gray>), $timestamp</hover>")
-        }
-    }
-
-    @Subcommand("check")
-    @CommandPermission("trialore.list")
-    @Description("Check if a user passed the test")
-    @CommandAlias("check")
-    fun onCheck(player: Player, target: String) {
-        val testificate = Bukkit.getOfflinePlayer(target)
-        val tests = trialORE.database.getTests(testificate.uniqueId)
-        if (tests.isEmpty()) {
-            player.renderMiniMessage("<red>User <white>$target <red>has not been in any test.")
-            return
-        }
-        if (tests.any { it.passed }) {
-            player.renderMiniMessage("<green>User <white>$target <green>has passed the test!")
-            return
-        }
-        player.renderMiniMessage("<red>User <white>$target <red>has failed all their tests!")
-    }
-
-    @Subcommand("history")
-    @CommandPermission("trialore.test")
-    @Description("Get your test history")
-    fun onHistory(player: Player) {
-        val testificate = player.uniqueId
-        val tests = trialORE.database.getTests(testificate)
-        player.renderMiniMessage("<gray>You have taken ${tests.size} tests")
-        tests.forEach { testInfo ->
-            val (state, color) = if (testInfo.passed) {
-                "Passed" to "<green>"
-            } else {
-                "Failed" to "<red>"
-            }
-            val startTime = testInfo.start.toLong()
-            val timestamp = getRelativeTimestamp(startTime)
-            val wrong = testInfo.wrong
-            val correct = 25 - wrong
-            val percentage = (correct.toDouble() / 25.toDouble()) * 100
-            player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
-                " (State: $color${state}<white>), with $wrong wrong Answers'><gray>Test ${testInfo.attempt}, $timestamp</hover>: $color$percentage%<gray>")
-        }
-    }
-
     @CommandAlias("stoptest")
     @Subcommand("stop")
     @Conditions("testing")
     @Description("Stop a test")
     fun onStop(player: Player, testMeta: TestMeta) {
         player.renderMessage("You have exited your test")
-        trialORE.endTest(player.uniqueId, testMeta.session.startingtime, false, wrong = 25)
+        trialORE.endTest(player.uniqueId, testMeta.session.startTime, false, wrong = 25)
     }
 
     @CommandAlias("testanswer")
@@ -183,5 +87,86 @@ class TestCommand(
 
         session.index++
         trialORE.sendNextQuestion(player, session)
+    }
+
+    @Subcommand("list")
+    @CommandPermission("trialore.list")
+    @Description("Get the info of an individual from past tests")
+    @CommandCompletion("@usernameCache")
+    fun onList(player: Player, @Single target: String, @Default("any") filter: TestFilter) {
+        val testificate = trialORE.server.getPlayer(target)?.uniqueId
+            ?: trialORE.database.usernameToUuidCache[target]
+            ?: throw TrialOreException("Invalid target $target. Please provide an online player or UUID")
+        listTests(player, testificate, "$target has", filter, true)
+    }
+
+    @Subcommand("history")
+    @CommandPermission("trialore.test")
+    @Description("Get your test history")
+    fun onHistory(player: Player, @Default("any") filter: TestFilter) {
+        listTests(player, player.uniqueId, "You have", filter, false)
+    }
+
+    private fun TestFilter.matches(passed: Boolean) = when (this) {
+        TestFilter.ANY -> true
+        TestFilter.FAIL -> !passed
+        TestFilter.PASS -> passed
+    }
+
+    private fun listTests(
+        player: Player,
+        testificate: UUID,
+        header: String,
+        filter: TestFilter,
+        includeSpeedWarning: Boolean = false,
+    ) {
+        val allTests = trialORE.database.getTests(testificate)
+        val tests = allTests.filter { filter.matches(it.passed) }
+        val showingText = when (filter) {
+            TestFilter.ANY -> "all: "
+            TestFilter.FAIL -> "only failed:"
+            TestFilter.PASS -> "only passed:"
+        }
+        player.renderMiniMessage("$header taken ${allTests.size} tests (showing $showingText ${tests.size})")
+        tests.forEach { player.renderMiniMessage(it.toMiniMessage(includeSpeedWarning)) }
+    }
+
+    private fun TestInfo.toMiniMessage(includeSpeedWarning: Boolean = false): String {
+        val relativeTimestamp = start.toRelativeTimestamp()
+        val duration = Duration.between(start, end)
+        val numQuestions = 25
+        val correct = numQuestions - wrong
+        val percentage = "%.1f".format(100 * correct.toDouble() / numQuestions.toDouble())
+        val speedLimit = Duration.ofSeconds(45)
+        val speedWarning = if (includeSpeedWarning && duration < speedLimit) {
+            ":rotating_light: :rotating_light: :rotating_light: Test done in ${duration.minSec()} (under ${speedLimit.minSec()})"
+        } else ""
+        val (state, color) = if (passed) {
+            "Passed" to "<green>"
+        } else {
+            "Failed" to "<red>"
+        }
+        val info = "$color$state<gray> in <white>${duration.minSec()}! $correct<gray>/<white>$numQuestions <gray>($color$percentage%<gray>)"
+        val text = "Test $attempt, $relativeTimestamp: $info $speedWarning"
+        val hoverText = "<white>At <gray>${getDate(start)}<white>: $info"
+        return "<hover:show_text:'$hoverText'>$text</hover>"
+    }
+
+    @Subcommand("check")
+    @CommandPermission("trialore.list")
+    @Description("Check if a user passed the test")
+    @CommandAlias("check")
+    fun onCheck(player: Player, target: String) {
+        val testificate = Bukkit.getOfflinePlayer(target)
+        val tests = trialORE.database.getTests(testificate.uniqueId)
+        if (tests.isEmpty()) {
+            player.renderMiniMessage("<red>User <white>$target <red>has not been in any test.")
+            return
+        }
+        if (tests.any { it.passed }) {
+            player.renderMiniMessage("<green>User <white>$target <green>has passed the test!")
+            return
+        }
+        player.renderMiniMessage("<red>User <white>$target <red>has failed all their tests!")
     }
 }

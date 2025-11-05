@@ -2,8 +2,10 @@ package org.openredstone.trialore
 
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.time.Instant
 import java.util.*
 
 object Note : Table("note") {
@@ -28,8 +30,8 @@ object Trial : Table("trial") {
 object Test : Table("test") {
     val id = integer("id").autoIncrement()
     val testificate = varchar("testificate", 36).index()
-    val start = integer("start")
-    val end = integer("end").nullable()
+    val start = timestamp("start")
+    val end = timestamp("end")
     val passed = bool("passed")
     val wrong = integer("wrong")
     override val primaryKey = PrimaryKey(id)
@@ -54,11 +56,11 @@ data class TrialInfo(
 
 data class TestInfo(
     val testificate: UUID,
-    val start: Int,
-    val end: Int,
+    val start: Instant,
+    val end: Instant,
     val passed: Boolean,
     val wrong: Int,
-    val attempt: Int = 0
+    val attempt: Int = 0,
 )
 
 fun now() = System.currentTimeMillis().floorDiv(1000).toInt()
@@ -96,13 +98,13 @@ class Storage(
         }
     }
 
-    fun endTest(testificate: UUID, startingtime: Int, passed: Boolean, wrong: Int) = transaction(database) {
+    fun endTest(testificate: UUID, startTime: Instant, passed: Boolean, wrong: Int) = transaction(database) {
         Test.insert {
             it[Test.testificate] = testificate.toString()
-            it[start] = startingtime
+            it[start] = startTime
             it[Test.passed] = passed
             it[Test.wrong] = wrong
-            it[end] = now()
+            it[end] = Instant.now()
         }[Test.id]
     }
 
@@ -212,7 +214,7 @@ class Storage(
 private fun ResultRow.toTestInfo() = TestInfo(
     testificate = UUID.fromString(this[Test.testificate]),
     start = this[Test.start],
-    end = this[Test.end] ?: 0,
+    end = this[Test.end],
     passed = this[Test.passed],
     wrong = this[Test.wrong],
 )
