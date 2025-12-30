@@ -19,6 +19,10 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.util.*
 import java.util.logging.Level
 import kotlin.jvm.optionals.getOrNull
@@ -237,7 +241,18 @@ class TrialOre : JavaPlugin(), Listener {
                 )
             )
         )
-        khttp.post(config.webhook, json = payload)
+        postWebhook(payload)
+    }
+
+    private fun postWebhook(payload: Any) {
+        val req = HttpRequest.newBuilder(URI(config.webhook))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(ObjectMapper().writeValueAsString(payload)))
+            .build()
+        val status = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.discarding()).statusCode()
+        if (status != 204) {
+            logger.warning("Webhook POST request returned status code $status")
+        }
     }
 
     private fun handleCommandException(

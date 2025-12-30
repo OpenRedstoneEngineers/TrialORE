@@ -21,7 +21,6 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
-    implementation("org.danilopianini:khttp:1.6.3")
     implementation("net.luckperms:api:5.1")
     implementation("org.jetbrains.exposed:exposed-core:0.51.1")
     implementation("org.jetbrains.exposed:exposed-jdbc:0.51.1")
