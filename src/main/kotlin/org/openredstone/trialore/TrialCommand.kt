@@ -70,9 +70,11 @@ class TrialCommand(
     @CommandAlias("trialstart")
     @Subcommand("start")
     @Description("Start a trial")
-    @Conditions("notTrialing")
     @CommandCompletion("@players app")
     fun onStart(player: Player, @Flags("other") testificate: Player, @Single app: String) {
+        if (player.uniqueId in trialORE.trialMapping) {
+            throw TrialOreException("You are already in the act of trialing")
+        }
         if (trialORE.trialMapping.any { (_, meta) -> meta.testificate == testificate.uniqueId }) {
             throw TrialOreException("That individual is already trialing")
         }
@@ -91,7 +93,6 @@ class TrialCommand(
     }
 
     @Subcommand("note")
-    @Conditions("trialing")
     @Description("Manage notes")
     inner class Note : BaseCommand() {
 
@@ -144,7 +145,6 @@ class TrialCommand(
     }
 
     @Subcommand("finish")
-    @Conditions("trialing")
     @Description("Finish a trial")
     inner class Finish : BaseCommand() {
 

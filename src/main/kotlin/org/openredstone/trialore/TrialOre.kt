@@ -70,21 +70,9 @@ class TrialOre : JavaPlugin(), Listener {
         config = loadConfig()
         server.pluginManager.registerEvents(this, this)
         PaperCommandManager(this).apply {
-            commandConditions.addCondition("notTrialing") {
-                // Condition "notTrialing" will fail if the person is trialing
-                if (trialMapping.containsKey(it.issuer.player.uniqueId)) {
-                    throw TrialOreException("You are already in the act of trialing")
-                }
-            }
-            commandConditions.addCondition("trialing") {
-                // Condition "trialing" will fail if the person is not trialing
-                if (!trialMapping.containsKey(it.issuer.player.uniqueId)) {
-                    throw TrialOreException("You are not trialing anyone")
-                }
-            }
             commandContexts.registerIssuerOnlyContext(TrialMeta::class.java) { context ->
                 trialMapping[context.player.uniqueId]
-                    ?: throw TrialOreException("Invalid trial mapping. This is likely a bug")
+                    ?: throw TrialOreException("You are not trialing anyone")
             }
             commandContexts.registerContext(User::class.java) { context ->
                 val arg = context.popFirstArg()
