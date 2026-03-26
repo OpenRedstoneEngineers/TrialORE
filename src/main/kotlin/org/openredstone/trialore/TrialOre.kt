@@ -21,6 +21,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.util.*
 import java.util.logging.Level
+import kotlin.jvm.optionals.getOrNull
 
 val VERSION = "1.1"
 
@@ -35,8 +36,6 @@ fun Player.renderMessage(value: Component) = this.sendMessage(
 fun Player.renderMessage(value: String) = renderMessage(Component.text(value))
 fun Player.renderMiniMessage(value: String) = renderMessage(MiniMessage.miniMessage().deserialize(value))
 
-internal fun <T> Optional<T>.toNullable(): T? = this.orElse(null)
-
 data class TrialOreConfig(
     val studentGroup: String = "student",
     val testificateGroup: String = "testificate",
@@ -50,15 +49,23 @@ data class TrialMeta(
     val trialId: Int
 )
 
+data class User(val uuid: UUID, val name: String)
+
+fun tryParseUUID(s: String) = try {
+    UUID.fromString(s)
+} catch (_: IllegalArgumentException) {
+    null
+}
+
 class TrialOre : JavaPlugin(), Listener {
     lateinit var database: Storage
     lateinit var luckPerms: LuckPerms
     lateinit var config: TrialOreConfig
-    val trialMapping: MutableMap<UUID, Pair<UUID, Int>> = mutableMapOf()
+    val trialMapping: MutableMap<UUID, TrialMeta> = mutableMapOf()
     private val mapper = ObjectMapper(YAMLFactory())
     override fun onEnable() {
         loadConfig()
-        database = Storage(this.dataFolder.resolve("trials.db").toString())
+        database = Storage(dataFolder.resolve("trials.db").toString())
         luckPerms = LuckPermsProvider.get()
         config = loadConfig()
         server.pluginManager.registerEvents(this, this)
@@ -76,22 +83,28 @@ class TrialOre : JavaPlugin(), Listener {
                 }
             }
             commandContexts.registerIssuerOnlyContext(TrialMeta::class.java) { context ->
-                val meta = trialMapping[context.player.uniqueId]
+                trialMapping[context.player.uniqueId]
                     ?: throw TrialOreException("Invalid trial mapping. This is likely a bug")
-                TrialMeta(meta.first, meta.second)
+            }
+            commandContexts.registerContext(User::class.java) { context ->
+                val arg = context.popFirstArg()
+                val uuid = server.getPlayer(arg)?.uniqueId
+                    ?: tryParseUUID(arg)
+                    ?: database.usernameToUuidCache[arg]
+                    ?: throw TrialOreException("Unknown user, please provide a known username or UUID")
+                User(uuid, database.uuidToUsernameCache[uuid] ?: uuid.toString())
             }
             commandCompletions.registerCompletion("usernameCache") { database.usernameToUuidCache.keys }
+            commandCompletions.setDefaultCompletion("usernameCache", User::class.java)
             registerCommand(TrialCommand(this@TrialOre, VERSION))
             setDefaultExceptionHandler(::handleCommandException, false)
         }
     }
 
     override fun onDisable() {
-        trialMapping.forEach { (trialer, meta) ->
-            val testificate = meta.first
-            val trialId = meta.second
-            endTrial(testificate, trialId, false,
-                "This trial was automatically ended as the server went offline")
+        trialMapping.forEach { (_, meta) ->
+            val (testificate, trialId) = meta
+            endTrial(testificate, trialId, false, "This trial was automatically ended as the server went offline")
         }
     }
 
@@ -112,10 +125,9 @@ class TrialOre : JavaPlugin(), Listener {
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
         database.ensureCachedUsername(event.player.uniqueId, event.player.name)
-        trialMapping.forEach { (trialer, meta) ->
-            val testificate = meta.first
-            if ( testificate == event.player.uniqueId ) {
-                setLpParent(testificate, config.testificateGroup)
+        trialMapping.forEach { (_, meta) ->
+            if (meta.testificate == event.player.uniqueId ) {
+                setLpParent(meta.testificate, config.testificateGroup)
             }
         }
     }
@@ -124,16 +136,16 @@ class TrialOre : JavaPlugin(), Listener {
     fun onLeave(event: PlayerQuitEvent) {
         val uuid = event.player.uniqueId
         trialMapping.forEach { (trialer, meta) ->
-            val testificate = meta.first
-            val trialId = meta.second
+            val (testificate, trialId) = meta
+            // NOTE: server.getPlayer only returns online players
             if (uuid == testificate) {
-                server.onlinePlayers.firstOrNull { it.uniqueId == trialer} ?.renderMessage(
+                server.getPlayer(trialer)?.renderMessage(
                     "The testificate has left. They have 5 minutes to rejoin before this trial is " +
                         "automatically invalidated"
                 )
                 setLpParent(testificate, config.studentGroup)
-                this.server.scheduler.runTaskLater(this, Runnable {
-                    if (this.server.onlinePlayers.map { it.uniqueId }.contains(testificate)) {
+                server.scheduler.runTaskLater(this, Runnable {
+                    if (server.getPlayer(testificate) != null) {
                         // Testificate has reconnected, don't end
                         return@Runnable
                     }
@@ -142,18 +154,18 @@ class TrialOre : JavaPlugin(), Listener {
                         trialer, trialId, false,
                         "The trial was automatically ended due to the trialer or testificate leaving"
                     )
-                    server.onlinePlayers.firstOrNull { it.uniqueId == trialer }?.renderMessage(
+                    server.getPlayer(trialer)?.renderMessage(
                         "The trial was automatically failed as the testificate has left for longer than 5 minutes"
                     )
                 }, config.abandonForgiveness)
             }
             if (uuid == trialer) {
-                server.onlinePlayers.firstOrNull { it.uniqueId == testificate }?.renderMessage(
+                server.getPlayer(testificate)?.renderMessage(
                     "The trialer has left. They have 5 minutes to rejoin before this trial is " +
                         "automatically invalidated"
                 )
-                this.server.scheduler.runTaskLater(this, Runnable {
-                    if (this.server.onlinePlayers.map { it.uniqueId }.contains(trialer)) {
+                server.scheduler.runTaskLater(this, Runnable {
+                    if (server.getPlayer(trialer) != null) {
                         // Trialer has reconnected, don't end
                         return@Runnable
                     }
@@ -162,7 +174,7 @@ class TrialOre : JavaPlugin(), Listener {
                         trialer, trialId, false,
                         "The trial was automatically ended due to the trialer or testificate leaving"
                     )
-                    server.onlinePlayers.firstOrNull { it.uniqueId == testificate }?.renderMessage(
+                    server.getPlayer(testificate)?.renderMessage(
                         "The trial was automatically failed as the trialer has left for longer than 5 minutes"
                     )
                 }, config.abandonForgiveness)
@@ -171,19 +183,17 @@ class TrialOre : JavaPlugin(), Listener {
     }
 
     fun startTrial(trialer: UUID, testificate: UUID, app: String) {
-        val trialId = this.database.insertTrial(trialer, testificate, app)
-        this.trialMapping[trialer] = Pair(testificate, trialId)
+        val trialId = database.insertTrial(trialer, testificate, app)
+        trialMapping[trialer] = TrialMeta(testificate, trialId)
         setLpParent(testificate, config.testificateGroup)
     }
 
     fun endTrial(trialer: UUID, trialId: Int, passed: Boolean, finalNote: String? = null) {
+        val (testificate, _) = checkNotNull(trialMapping.remove(trialer)) { "endTrial: not taking a trial" }
         if (finalNote != null) {
-            this.database.insertNote(trialId, finalNote)
+            database.insertNote(trialId, finalNote)
         }
-        this.database.endTrial(trialId, passed)
-        val testificate = this.trialMapping[trialer]?.first
-            ?: throw TrialOreException("Invalid trial mapping. This is likely a bug")
-        this.trialMapping.remove(trialer)
+        database.endTrial(trialId, passed)
         if (passed) {
             setLpParent(testificate, config.builderGroup)
         } else {
@@ -200,9 +210,9 @@ class TrialOre : JavaPlugin(), Listener {
             user.data().remove(oldNode)
             val newNode = InheritanceNode.builder(parent).value(true).build()
             user.data().add(newNode)
-            user.setPrimaryGroup(parent)
+            user.primaryGroup = parent
             luckPerms.userManager.saveUser(user).thenRun {
-                luckPerms.messagingService.toNullable()?.pushUserUpdate(user)
+                luckPerms.messagingService.getOrNull()?.pushUserUpdate(user)
             }
         }
     }
@@ -218,15 +228,10 @@ class TrialOre : JavaPlugin(), Listener {
         trialInfo.notes.forEach { note ->
             lines.add("* $note")
         }
-        val result = if (trialInfo.passed) {
-            "*Passed*"
+        val (result, color) = if (trialInfo.passed) {
+            "*Passed*" to 0x5fff58
         } else {
-            "*Failed*"
-        }
-        val color = if(trialInfo.passed) {
-            0x5fff58
-        } else {
-            0xff5858
+            "*Failed*" to 0xff5858
         }
         val payload = mapOf(
             "embeds" to listOf(

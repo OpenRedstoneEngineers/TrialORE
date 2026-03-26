@@ -45,7 +45,7 @@ fun now() = System.currentTimeMillis().floorDiv(1000).toInt()
 class Storage(
     dbFile: String
 ) {
-    val database = Database.connect("jdbc:sqlite:${dbFile}", "org.sqlite.JDBC")
+    val database = Database.connect("jdbc:sqlite:$dbFile", "org.sqlite.JDBC")
     var uuidToUsernameCache = mapOf<UUID, String>()
     var usernameToUuidCache = mapOf<String, UUID>()
 

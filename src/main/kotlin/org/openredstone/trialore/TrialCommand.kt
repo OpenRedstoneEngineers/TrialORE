@@ -32,7 +32,7 @@ class TrialCommand(
     private val version: String,
 ) : BaseCommand() {
 
-    @Default()
+    @Default
     @Subcommand("info")
     @Description("Information about a TrialORE")
     fun onInfo(player: Player) {
@@ -44,15 +44,9 @@ class TrialCommand(
 
     @Subcommand("history")
     @Description("Get the info of an individual from past trials")
-    @CommandCompletion("@usernameCache")
-    fun onHistory(player: Player, @Single target: String) {
-        var testificate = trialORE.server.onlinePlayers.firstOrNull { it.name == target }?.uniqueId
-        if (testificate == null) {
-            testificate = trialORE.database.usernameToUuidCache[target]
-                ?: throw TrialOreException("Invalid target $target. Please provide an online player or UUID")
-        }
-        val trials = trialORE.database.getTrials(testificate)
-        player.renderMiniMessage("<gray>$target has been in ${trials.size} trials")
+    fun onHistory(player: Player, testificate: User) {
+        val trials = trialORE.database.getTrials(testificate.uuid)
+        player.renderMiniMessage("<gray>${testificate.name} has been in ${trials.size} trials")
         for (trialInfo in trials) {
             val state = if (trialInfo.passed) {
                 "<green>Passed</green>"
@@ -78,12 +72,8 @@ class TrialCommand(
     @Description("Start a trial")
     @Conditions("notTrialing")
     @CommandCompletion("@players app")
-    fun onStart(player: Player, @Single target: String, @Single app: String) {
-        val testificate = trialORE.server.onlinePlayers.firstOrNull { it.name == target }
-            ?: throw TrialOreException("That individual is not online and cannot be trialed")
-        if (trialORE.trialMapping.filter { (_, meta) ->
-            meta.first == testificate.uniqueId
-        }.isNotEmpty()) {
+    fun onStart(player: Player, @Flags("other") testificate: Player, @Single app: String) {
+        if (trialORE.trialMapping.any { (_, meta) -> meta.testificate == testificate.uniqueId }) {
             throw TrialOreException("That individual is already trialing")
         }
         if (trialORE.getParent(testificate.uniqueId) != trialORE.config.studentGroup) {
@@ -123,15 +113,15 @@ class TrialCommand(
                 return
             }
             player.renderMiniMessage("Current notes:")
-            for (note in notes) {
-                val cleanedNote = note.value
+            for ((key, value) in notes) {
+                val cleanedNote = value
                     .replace("\'", "\\\'")
                     .replace("\"", "\\\"")
-                player.renderMiniMessage("<click:suggest_command:'/trial note edit ${note.key} ${cleanedNote}'>" +
+                player.renderMiniMessage("<click:suggest_command:'/trial note edit $key ${cleanedNote}'>" +
                     "<hover:show_text:'Edit note'> <yellow>✏</hover></click><gray> |" +
-                    "<click:suggest_command:'/trial note remove ${note.key}'>" +
+                    "<click:suggest_command:'/trial note remove $key'>" +
                     "<hover:show_text:'Remove note'> <red>✖</hover></click><gray> : <white>" +
-                    note.value
+                    value
                 )
             }
         }
