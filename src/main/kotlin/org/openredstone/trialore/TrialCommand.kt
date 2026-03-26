@@ -2,6 +2,7 @@ package org.openredstone.trialore
 
 import co.aikar.commands.BaseCommand
 import co.aikar.commands.annotation.*
+import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import java.time.Instant
 import java.time.LocalDateTime
@@ -168,6 +169,7 @@ class TrialCommand(
     }
 }
 
-class TrialOreException : Exception {
-    constructor(message: String) : super(message)
+class TrialOreException(override val message: String, val component: Component) : Exception(message) {
+    constructor(message: String) : this(message, Component.text(message))
+    constructor(component: Component) : this(component.toPlainText(), component)
 }

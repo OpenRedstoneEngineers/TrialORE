@@ -6,13 +6,16 @@ import co.aikar.commands.PaperCommandManager
 import co.aikar.commands.RegisteredCommand
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import net.luckperms.api.LuckPerms
 import net.luckperms.api.LuckPermsProvider
 import net.luckperms.api.node.types.InheritanceNode
-import org.bukkit.entity.Player
+import org.bukkit.command.CommandSender
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
@@ -27,18 +30,21 @@ import java.util.*
 import java.util.logging.Level
 import kotlin.jvm.optionals.getOrNull
 
-val VERSION = "1.1"
+const val VERSION = "1.1"
 
 const val baseMessage = "<dark_gray>[<gray>TrialORE<dark_gray>]<white> <message>"
 
-fun Player.renderMessage(value: Component) = this.sendMessage(
+fun Audience.renderMessage(value: Component) = sendMessage(
     MiniMessage.miniMessage().deserialize(
         baseMessage,
         Placeholder.component("message", value)
     )
 )
-fun Player.renderMessage(value: String) = renderMessage(Component.text(value))
-fun Player.renderMiniMessage(value: String) = renderMessage(MiniMessage.miniMessage().deserialize(value))
+fun Audience.renderMessage(value: String) = renderMessage(Component.text(value))
+fun Audience.renderMiniMessage(value: String) =
+    renderMessage(MiniMessage.miniMessage().deserialize(value))
+
+fun Component.toPlainText(): String = PlainTextComponentSerializer.plainText().serialize(this)
 
 data class TrialOreConfig(
     val studentGroup: String = "student",
@@ -266,9 +272,7 @@ class TrialOre : JavaPlugin(), Listener {
             logger.log(Level.SEVERE, "Error while executing command", throwable)
             return false
         }
-        val message = exception.message ?: "Something went wrong!"
-        val player = server.getPlayer(sender.uniqueId)!!
-        player.renderMiniMessage("<red>$message</red>")
+        sender.getIssuer<CommandSender>().renderMessage(exception.component.color(NamedTextColor.RED))
         return true
     }
 }
