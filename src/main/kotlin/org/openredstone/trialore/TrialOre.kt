@@ -100,9 +100,8 @@ class TrialOre : JavaPlugin(), Listener {
     }
 
     override fun onDisable() {
-        trialMapping.forEach { (_, meta) ->
-            val (testificate, trialId) = meta
-            endTrial(testificate, trialId, false, "This trial was automatically ended as the server went offline")
+        trialMapping.forEach { (trialer, meta) ->
+            endTrial(trialer, meta.trialId, false, "This trial was automatically ended as the server went offline")
         }
     }
 
