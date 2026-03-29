@@ -142,6 +142,10 @@ class TrialOre : JavaPlugin(), Listener {
                 )
                 setLpParent(testificate, config.studentGroup)
                 server.scheduler.runTaskLater(this, Runnable {
+                    if (trialMapping[trialer]?.trialId != trialId) {
+                        // the trial has already ended
+                        return@Runnable
+                    }
                     if (server.getPlayer(testificate) != null) {
                         // Testificate has reconnected, don't end
                         return@Runnable
@@ -162,6 +166,10 @@ class TrialOre : JavaPlugin(), Listener {
                         "automatically invalidated"
                 )
                 server.scheduler.runTaskLater(this, Runnable {
+                    if (trialMapping[trialer]?.trialId != trialId) {
+                        // the trial has already ended
+                        return@Runnable
+                    }
                     if (server.getPlayer(trialer) != null) {
                         // Trialer has reconnected, don't end
                         return@Runnable
