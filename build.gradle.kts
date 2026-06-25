@@ -2,11 +2,11 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "2.1.10"
+    val kotlinVersion = "2.4.0"
     kotlin("jvm") version kotlinVersion
     kotlin("kapt") version kotlinVersion
-    kotlin("plugin.serialization") version "1.9.22"
-    id("com.gradleup.shadow") version "8.3.6"
+    kotlin("plugin.serialization") version kotlinVersion
+    id("com.gradleup.shadow") version "9.4.3"
 }
 
 group = "org.openredstone.trialore"
@@ -21,15 +21,16 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
-    implementation(group = "org.danilopianini", name = "khttp", version = "1.6.3")
-    implementation(group = "net.luckperms", name = "api", version = "5.1")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-core", version = "0.51.1")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.51.1")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.51.1")
-    implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.46.0.0")
-    implementation(group = "co.aikar", name = "acf-paper", version = "0.5.1-SNAPSHOT")
-    implementation(group = "com.fasterxml.jackson.dataformat", name = "jackson-dataformat-yaml", version = "2.15.0")
-    compileOnly(group = "io.papermc.paper", name = "paper-api", version = "1.20.4-R0.1-SNAPSHOT")
+    implementation("org.danilopianini:khttp:1.6.3")
+    implementation("net.luckperms:api:5.1")
+    implementation("org.jetbrains.exposed:exposed-core:0.51.1")
+    implementation("org.jetbrains.exposed:exposed-jdbc:0.51.1")
+    implementation("org.jetbrains.exposed:exposed-java-time:0.51.1")
+    implementation("org.xerial:sqlite-jdbc:3.46.0.0")
+    implementation("co.aikar:acf-paper:0.5.1-SNAPSHOT")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.20.0")
+    compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
 }
 
 tasks.withType<KotlinCompile> {
@@ -45,17 +46,19 @@ java {
 }
 
 tasks.shadowJar {
-    relocate("co.aikar.commands", "trialore.acf")
-    relocate("co.aikar.locales", "trialore.locales")
+    val lib = "$group.lib"
+    relocate("co.aikar.commands", "$lib.acf")
+    relocate("co.aikar.locales", "$lib.acflocales")
+    relocate("com.fasterxml.jackson", "$lib.jackson")
     dependencies {
-        exclude(
-            dependency(
-                "net.luckperms:api:.*"
-            )
-        )
+        exclude(dependency("net.luckperms:api:.*"))
     }
 }
 
 tasks.build {
     dependsOn(tasks.shadowJar)
+}
+
+tasks.withType<Test> {
+    failOnNoDiscoveredTests = false
 }
