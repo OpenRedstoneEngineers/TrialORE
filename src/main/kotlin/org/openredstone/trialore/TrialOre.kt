@@ -210,7 +210,7 @@ class TrialOre : JavaPlugin(), Listener {
     fun getParent(uuid: UUID): String? = luckPerms.userManager.getUser(uuid)?.primaryGroup
 
     private fun setLpParent(uuid: UUID, parent: String) {
-        luckPerms.userManager.getUser(uuid)?.let { user ->
+        luckPerms.userManager.loadUser(uuid).thenCompose { user ->
             val oldNode = InheritanceNode.builder(user.primaryGroup).value(true).build()
             user.data().remove(oldNode)
             val newNode = InheritanceNode.builder(parent).value(true).build()
