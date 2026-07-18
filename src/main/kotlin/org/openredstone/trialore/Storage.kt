@@ -2,6 +2,7 @@ package org.openredstone.trialore
 
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.time.Instant
 import java.util.*
 
 object Note : Table("note") {
@@ -33,14 +34,12 @@ data class TrialInfo(
     val trialer: UUID,
     val testificate: UUID,
     val app: String,
-    val start: Int,
-    val end: Int,
+    val start: Instant,
+    val end: Instant,
     val notes: List<String>,
     val passed: Boolean,
     val attempt: Int,
 )
-
-fun now() = System.currentTimeMillis().floorDiv(1000).toInt()
 
 class Storage(
     dbFile: String
@@ -64,13 +63,13 @@ class Storage(
             it[Trial.trialer] = trialer.toString()
             it[Trial.testificate] = testificate.toString()
             it[Trial.app] = app
-            it[start] = now()
+            it[start] = Instant.now().epochSecond.toInt()
         }[Trial.id]
     }
 
     fun endTrial(trialId: Int, passed: Boolean) = transaction(database) {
         Trial.update({ Trial.id eq trialId}) {
-            it[end] = now()
+            it[end] = Instant.now().epochSecond.toInt()
             it[Trial.passed] = passed
         }
     }
@@ -102,8 +101,8 @@ class Storage(
         trialer = UUID.fromString(this[Trial.trialer]),
         testificate = UUID.fromString(this[Trial.testificate]),
         app = this[Trial.app] ?: "No app in database. This is a bug.",
-        start = this[Trial.start],
-        end = this[Trial.end] ?: 0,
+        start = Instant.ofEpochSecond(this[Trial.start].toLong()),
+        end = Instant.ofEpochSecond((this[Trial.end] ?: 0).toLong()),
         notes = notes,
         passed = this[Trial.passed] ?: false,
         attempt = attempt,

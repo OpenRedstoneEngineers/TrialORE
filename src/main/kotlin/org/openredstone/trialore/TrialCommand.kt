@@ -9,19 +9,18 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
-fun getDate(timestamp: Long) = LocalDateTime.ofInstant(Instant.ofEpochSecond(timestamp), ZoneOffset.UTC)
+fun getDate(timestamp: Instant) = LocalDateTime.ofInstant(timestamp, ZoneOffset.UTC)
 
-fun getRelativeTimestamp(unixTimestamp: Long): String {
-    val currentTime = LocalDateTime.now(ZoneOffset.UTC)
-    val eventTime = getDate(unixTimestamp)
-
-    val difference = ChronoUnit.MINUTES.between(eventTime, currentTime)
-
+fun Instant.toRelativeTimestamp(): String {
+    val difference = ChronoUnit.MINUTES.between(this, Instant.now())
     return when {
+        difference < 0 -> "in the future :o"
         difference < 1 -> "just now"
+        difference < 2 -> "a minute ago"
         difference < 60 -> "$difference minutes ago"
         difference < 120 -> "an hour ago"
         difference < 1440 -> "${difference / 60} hours ago"
+        difference < 2880 -> "a day ago"
         else -> "${difference / 1440} days ago"
     }
 }
@@ -54,10 +53,9 @@ class TrialCommand(
             } else {
                 "<red>Failed</red>"
             }
-            val startTime = trialInfo.start.toLong()
-            val timestamp = getRelativeTimestamp(startTime)
+            val timestamp = trialInfo.start.toRelativeTimestamp()
             val trialer = trialORE.database.uuidToUsernameCache[trialInfo.trialer] ?: "Invalid UUID??"
-            player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(startTime)}<white>" +
+            player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(trialInfo.start)}<white>" +
                 " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${trialInfo.attempt}, $timestamp</hover>:")
             if (trialInfo.notes.isEmpty()) {
                 player.renderMiniMessage("<i>No notes")

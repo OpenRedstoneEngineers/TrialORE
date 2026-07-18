@@ -226,8 +226,8 @@ class TrialOre : JavaPlugin(), Listener {
         val lines = mutableListOf(
             "**Trialer**: ${database.uuidToUsernameCache[trialInfo.trialer]}",
             "**Attempt**: ${trialInfo.attempt}",
-            "**Start**: <t:${trialInfo.start}:F>",
-            "**End**: <t:${trialInfo.end}:F>",
+            "**Start**: <t:${trialInfo.start.epochSecond}:F>",
+            "**End**: <t:${trialInfo.end.epochSecond}:F>",
             "**Notes**:"
         )
         trialInfo.notes.forEach { note ->
