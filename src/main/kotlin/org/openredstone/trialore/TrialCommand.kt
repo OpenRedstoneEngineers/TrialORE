@@ -5,9 +5,11 @@ import co.aikar.commands.annotation.*
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import java.time.Instant
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
+import java.util.*
 
 fun getDate(timestamp: Instant) = LocalDateTime.ofInstant(timestamp, ZoneOffset.UTC)
 
@@ -24,6 +26,8 @@ fun Instant.toRelativeTimestamp(): String {
         else -> "${difference / 1440} days ago"
     }
 }
+
+fun Duration.dayHourMin(): String = "${toDays()}d ${toHoursPart()}h ${toMinutesPart()}m"
 
 @CommandAlias("trial")
 @CommandPermission("trialore.trial")
@@ -86,10 +90,35 @@ class TrialCommand(
         if (!app.startsWith("https://discourse.openredstone.org/")) {
             throw TrialOreException("Invalid app: $app")
         }
+        enforceRateLimits(testificate.uniqueId)
+
         player.renderMessage("Starting trial of ${testificate.name}")
         testificate.renderMessage("Starting trial with ${player.name}")
         trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
     }
+
+    fun enforceRateLimits(testificate: UUID) {
+        val trials = trialORE.database.getTrials(testificate)
+        val primaryCooldownEndsAt = rateLimitEndsAt(trials, 1, Duration.ofDays(1))
+        val fails = trials.count { !it.passed }
+        val (attempts, perDuration) =
+            if (fails >= 3) 1 to Duration.ofDays(31) else 2 to Duration.ofDays(7)
+        val secondaryCooldownEndsAt = rateLimitEndsAt(trials, attempts, perDuration)
+        val cooldownEndsAt = max(primaryCooldownEndsAt, secondaryCooldownEndsAt)
+        val now = Instant.now()
+        if (cooldownEndsAt > now) {
+            val diff = Duration.between(now, cooldownEndsAt)
+            throw TrialOreException("That individual is currently rate limited and can trial again in ${diff.dayHourMin()}")
+        }
+    }
+
+    fun rateLimitEndsAt(trials: List<TrialInfo>, attempts: Int, perDuration: Duration): Instant {
+        // we only need to look at the attempts-th-last trial, if it exists, since the trials are in chronological order
+        val trial = trials.getOrNull(trials.size - attempts) ?: return Instant.MIN
+        return trial.start + perDuration
+    }
+
+    fun max(a: Instant, b: Instant): Instant = if (a < b) b else a
 
     @Subcommand("note")
     @Description("Manage notes")
