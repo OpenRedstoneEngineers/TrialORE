@@ -154,7 +154,7 @@ class TrialCommand(
         fun onPass(player: Player, trialMeta: TrialMeta) {
             player.renderMessage("Testificate has passed their trial")
             player.renderMessage("You may now communicate this pass with the testificate how you like")
-            trialORE.endTrial(player.uniqueId, trialMeta.trialId, true)
+            trialORE.endTrial(player.uniqueId, trialMeta.trialId, passed = true)
         }
 
         @CommandAlias("trialfail")
@@ -162,8 +162,8 @@ class TrialCommand(
         @Description("Fail this testificate's trial")
         fun onFail(player: Player, trialMeta: TrialMeta) {
             player.renderMessage("Testificate has failed their trial")
-            player.renderMessage("You may now communicate this pass with the testificate how you like")
-            trialORE.endTrial(player.uniqueId, trialMeta.trialId, false)
+            player.renderMessage("You may now communicate this fail with the testificate how you like")
+            trialORE.endTrial(player.uniqueId, trialMeta.trialId, passed = false)
         }
     }
 }
