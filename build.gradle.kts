@@ -7,6 +7,7 @@ plugins {
     kotlin("kapt") version kotlinVersion
     kotlin("plugin.serialization") version kotlinVersion
     id("com.gradleup.shadow") version "9.4.3"
+    id("com.github.gmazzo.buildconfig") version "6.0.10"
 }
 
 group = "org.openredstone.trialore"
@@ -43,6 +44,15 @@ java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(21))
     }
+}
+
+tasks.processResources {
+    expand("version" to project.version)
+}
+
+buildConfig {
+    packageName("${project.group}")
+    buildConfigField("VERSION", provider { "${project.version}" })
 }
 
 tasks.shadowJar {

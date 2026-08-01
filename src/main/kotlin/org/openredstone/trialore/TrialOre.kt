@@ -30,7 +30,7 @@ import java.util.*
 import java.util.logging.Level
 import kotlin.jvm.optionals.getOrNull
 
-const val VERSION = "1.1"
+const val VERSION = BuildConfig.VERSION
 
 const val baseMessage = "<dark_gray>[<gray>TrialORE<dark_gray>]<white> <message>"
 
