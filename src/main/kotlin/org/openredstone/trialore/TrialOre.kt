@@ -37,9 +37,10 @@ const val baseMessage = "<dark_gray>[<gray>TrialORE<dark_gray>]<white> <message>
 fun Audience.renderMessage(value: Component) = sendMessage(
     MiniMessage.miniMessage().deserialize(
         baseMessage,
-        Placeholder.component("message", value)
-    )
+        Placeholder.component("message", value),
+    ),
 )
+
 fun Audience.renderMessage(value: String) = renderMessage(Component.text(value))
 fun Audience.renderMiniMessage(value: String) =
     renderMessage(MiniMessage.miniMessage().deserialize(value))
@@ -51,12 +52,12 @@ data class TrialOreConfig(
     val testificateGroup: String = "testificate",
     val builderGroup: String = "builder",
     val webhook: String = "webhook",
-    val abandonForgiveness: Long = 6000
+    val abandonForgiveness: Long = 6000,
 )
 
 data class TrialMeta(
     val testificate: UUID,
-    val trialId: Int
+    val trialId: Int,
 )
 
 data class User(val uuid: UUID, val name: String)
@@ -123,7 +124,7 @@ class TrialOre : JavaPlugin(), Listener {
     fun onJoin(event: PlayerJoinEvent) {
         database.ensureCachedUsername(event.player.uniqueId, event.player.name)
         trialMapping.forEach { (_, meta) ->
-            if (meta.testificate == event.player.uniqueId ) {
+            if (meta.testificate == event.player.uniqueId) {
                 setLpParent(meta.testificate, config.testificateGroup)
             }
         }
@@ -138,51 +139,59 @@ class TrialOre : JavaPlugin(), Listener {
             if (uuid == testificate) {
                 server.getPlayer(trialer)?.renderMessage(
                     "The testificate has left. They have 5 minutes to rejoin before this trial is " +
-                        "automatically invalidated"
+                        "automatically invalidated",
                 )
                 setLpParent(testificate, config.studentGroup)
-                server.scheduler.runTaskLater(this, Runnable {
-                    if (trialMapping[trialer]?.trialId != trialId) {
-                        // the trial has already ended
-                        return@Runnable
-                    }
-                    if (server.getPlayer(testificate) != null) {
-                        // Testificate has reconnected, don't end
-                        return@Runnable
-                    }
-                    // END TRIAL!!!
-                    endTrial(
-                        trialer, trialId, false,
-                        "The trial was automatically ended due to the trialer or testificate leaving"
-                    )
-                    server.getPlayer(trialer)?.renderMessage(
-                        "The trial was automatically failed as the testificate has left for longer than 5 minutes"
-                    )
-                }, config.abandonForgiveness)
+                server.scheduler.runTaskLater(
+                    this,
+                    Runnable {
+                        if (trialMapping[trialer]?.trialId != trialId) {
+                            // the trial has already ended
+                            return@Runnable
+                        }
+                        if (server.getPlayer(testificate) != null) {
+                            // Testificate has reconnected, don't end
+                            return@Runnable
+                        }
+                        // END TRIAL!!!
+                        endTrial(
+                            trialer, trialId, false,
+                            "The trial was automatically ended due to the trialer or testificate leaving",
+                        )
+                        server.getPlayer(trialer)?.renderMessage(
+                            "The trial was automatically failed as the testificate has left for longer than 5 minutes",
+                        )
+                    },
+                    config.abandonForgiveness,
+                )
             }
             if (uuid == trialer) {
                 server.getPlayer(testificate)?.renderMessage(
                     "The trialer has left. They have 5 minutes to rejoin before this trial is " +
-                        "automatically invalidated"
+                        "automatically invalidated",
                 )
-                server.scheduler.runTaskLater(this, Runnable {
-                    if (trialMapping[trialer]?.trialId != trialId) {
-                        // the trial has already ended
-                        return@Runnable
-                    }
-                    if (server.getPlayer(trialer) != null) {
-                        // Trialer has reconnected, don't end
-                        return@Runnable
-                    }
-                    // END TRIAL!!!
-                    endTrial(
-                        trialer, trialId, false,
-                        "The trial was automatically ended due to the trialer or testificate leaving"
-                    )
-                    server.getPlayer(testificate)?.renderMessage(
-                        "The trial was automatically failed as the trialer has left for longer than 5 minutes"
-                    )
-                }, config.abandonForgiveness)
+                server.scheduler.runTaskLater(
+                    this,
+                    Runnable {
+                        if (trialMapping[trialer]?.trialId != trialId) {
+                            // the trial has already ended
+                            return@Runnable
+                        }
+                        if (server.getPlayer(trialer) != null) {
+                            // Trialer has reconnected, don't end
+                            return@Runnable
+                        }
+                        // END TRIAL!!!
+                        endTrial(
+                            trialer, trialId, false,
+                            "The trial was automatically ended due to the trialer or testificate leaving",
+                        )
+                        server.getPlayer(testificate)?.renderMessage(
+                            "The trial was automatically failed as the trialer has left for longer than 5 minutes",
+                        )
+                    },
+                    config.abandonForgiveness,
+                )
             }
         }
     }
@@ -228,7 +237,7 @@ class TrialOre : JavaPlugin(), Listener {
             "**Attempt**: ${trialInfo.attempt}",
             "**Start**: <t:${trialInfo.start.epochSecond}:F>",
             "**End**: <t:${trialInfo.end.epochSecond}:F>",
-            "**Notes**:"
+            "**Notes**:",
         )
         trialInfo.notes.forEach { note ->
             lines.add("* $note")
@@ -248,11 +257,11 @@ class TrialOre : JavaPlugin(), Listener {
                     "fields" to listOf(
                         mapOf(
                             "name" to "State",
-                            "value" to result
-                        )
-                    )
-                )
-            )
+                            "value" to result,
+                        ),
+                    ),
+                ),
+            ),
         )
         postWebhook(payload)
     }
@@ -273,7 +282,7 @@ class TrialOre : JavaPlugin(), Listener {
         registeredCommand: RegisteredCommand<*>,
         sender: CommandIssuer,
         args: List<String>,
-        throwable: Throwable
+        throwable: Throwable,
     ): Boolean {
         val exception = throwable as? TrialOreException ?: run {
             logger.log(Level.SEVERE, "Error while executing command", throwable)

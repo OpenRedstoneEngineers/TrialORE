@@ -42,7 +42,7 @@ data class TrialInfo(
 )
 
 class Storage(
-    dbFile: String
+    dbFile: String,
 ) {
     val database = Database.connect("jdbc:sqlite:$dbFile", "org.sqlite.JDBC")
     var uuidToUsernameCache = mapOf<UUID, String>()
@@ -54,7 +54,7 @@ class Storage(
 
     private fun initTables() = transaction(database) {
         SchemaUtils.create(
-            Note, Trial, UsernameCache
+            Note, Trial, UsernameCache,
         )
     }
 
@@ -68,7 +68,7 @@ class Storage(
     }
 
     fun endTrial(trialId: Int, passed: Boolean) = transaction(database) {
-        Trial.update({ Trial.id eq trialId}) {
+        Trial.update({ Trial.id eq trialId }) {
             it[end] = Instant.now().epochSecond.toInt()
             it[Trial.passed] = passed
         }
@@ -157,6 +157,6 @@ class Storage(
                 it[UsernameCache.username] to UUID.fromString(it[UsernameCache.uuid])
             }
         }
-        uuidToUsernameCache = usernameToUuidCache.entries.associate{(k,v)-> v to k}
+        uuidToUsernameCache = usernameToUuidCache.entries.associate { (k, v) -> v to k }
     }
 }

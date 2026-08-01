@@ -4,8 +4,8 @@ import co.aikar.commands.BaseCommand
 import co.aikar.commands.annotation.*
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
-import java.time.Instant
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
@@ -41,9 +41,11 @@ class TrialCommand(
     @Description("Information about a TrialORE")
     fun onInfo(player: Player) {
         player.renderMiniMessage("Current TrialORE version: <gray>$version")
-        player.renderMiniMessage("For more details on commands, " +
-            "<aqua><click:open_url:'https://github.com/OpenRedstoneEngineers/TrialORE/blob/main/README.md'>" +
-            "<hover:show_text:'Go to README'>view the README</hover></click>")
+        player.renderMiniMessage(
+            "For more details on commands, " +
+                "<aqua><click:open_url:'https://github.com/OpenRedstoneEngineers/TrialORE/blob/main/README.md'>" +
+                "<hover:show_text:'Go to README'>view the README</hover></click>",
+        )
     }
 
     @Subcommand("history")
@@ -59,8 +61,10 @@ class TrialCommand(
             }
             val timestamp = trialInfo.start.toRelativeTimestamp()
             val trialer = trialORE.database.uuidToUsernameCache[trialInfo.trialer] ?: "Invalid UUID??"
-            player.renderMiniMessage("<hover:show_text:'At <gray>${getDate(trialInfo.start)}<white>" +
-                " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${trialInfo.attempt}, $timestamp</hover>:")
+            player.renderMiniMessage(
+                "<hover:show_text:'At <gray>${getDate(trialInfo.start)}<white>" +
+                    " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${trialInfo.attempt}, $timestamp</hover>:",
+            )
             if (trialInfo.notes.isEmpty()) {
                 player.renderMiniMessage("<i>No notes")
             }
@@ -146,11 +150,12 @@ class TrialCommand(
                 val cleanedNote = value
                     .replace("\'", "\\\'")
                     .replace("\"", "\\\"")
-                player.renderMiniMessage("<click:suggest_command:'/trial note edit $key ${cleanedNote}'>" +
-                    "<hover:show_text:'Edit note'> <yellow>✏</hover></click><gray> |" +
-                    "<click:suggest_command:'/trial note remove $key'>" +
-                    "<hover:show_text:'Remove note'> <red>✖</hover></click><gray> : <white>" +
-                    value
+                player.renderMiniMessage(
+                    "<click:suggest_command:'/trial note edit $key ${cleanedNote}'>" +
+                        "<hover:show_text:'Edit note'> <yellow>✏</hover></click><gray> |" +
+                        "<click:suggest_command:'/trial note remove $key'>" +
+                        "<hover:show_text:'Remove note'> <red>✖</hover></click><gray> : <white>" +
+                        value,
                 )
             }
         }
@@ -167,7 +172,8 @@ class TrialCommand(
         @Subcommand("remove")
         @Description("Remove a note")
         fun onRemove(player: Player, trialMeta: TrialMeta, noteId: Int) {
-            val note = trialORE.database.deleteNote(trialMeta.trialId, noteId) ?: throw TrialOreException("Invalid note id $noteId")
+            val note = trialORE.database.deleteNote(trialMeta.trialId, noteId)
+                ?: throw TrialOreException("Invalid note id $noteId")
             player.renderMiniMessage("Removed <gray>$note")
         }
     }
