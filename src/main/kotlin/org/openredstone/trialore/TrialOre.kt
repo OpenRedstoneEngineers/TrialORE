@@ -34,18 +34,19 @@ const val VERSION = BuildConfig.VERSION
 
 const val baseMessage = "<dark_gray>[<gray>TrialORE<dark_gray>]<white> <message>"
 
-fun Audience.renderMessage(value: Component) = sendMessage(
+fun Audience.sendInfo(value: Component) = sendMessage(
     MiniMessage.miniMessage().deserialize(
         baseMessage,
         Placeholder.component("message", value),
     ),
 )
 
-fun Audience.renderMessage(value: String) = renderMessage(Component.text(value))
-fun Audience.renderMiniMessage(value: String) =
-    renderMessage(MiniMessage.miniMessage().deserialize(value))
+fun Audience.sendInfo(value: String) = sendInfo(Component.text(value))
+fun Audience.sendInfoMM(value: String) =
+    sendInfo(value.render())
 
 fun Component.toPlainText(): String = PlainTextComponentSerializer.plainText().serialize(this)
+fun String.render(): Component = MiniMessage.miniMessage().deserialize(this)
 
 data class TrialOreConfig(
     val studentGroup: String = "student",
@@ -137,7 +138,7 @@ class TrialOre : JavaPlugin(), Listener {
             val (testificate, trialId) = meta
             // NOTE: server.getPlayer only returns online players
             if (uuid == testificate) {
-                server.getPlayer(trialer)?.renderMessage(
+                server.getPlayer(trialer)?.sendInfo(
                     "The testificate has left. They have 5 minutes to rejoin before this trial is " +
                         "automatically invalidated",
                 )
@@ -158,7 +159,7 @@ class TrialOre : JavaPlugin(), Listener {
                             trialer, trialId, false,
                             "The trial was automatically ended due to the trialer or testificate leaving",
                         )
-                        server.getPlayer(trialer)?.renderMessage(
+                        server.getPlayer(trialer)?.sendInfo(
                             "The trial was automatically failed as the testificate has left for longer than 5 minutes",
                         )
                     },
@@ -166,7 +167,7 @@ class TrialOre : JavaPlugin(), Listener {
                 )
             }
             if (uuid == trialer) {
-                server.getPlayer(testificate)?.renderMessage(
+                server.getPlayer(testificate)?.sendInfo(
                     "The trialer has left. They have 5 minutes to rejoin before this trial is " +
                         "automatically invalidated",
                 )
@@ -186,7 +187,7 @@ class TrialOre : JavaPlugin(), Listener {
                             trialer, trialId, false,
                             "The trial was automatically ended due to the trialer or testificate leaving",
                         )
-                        server.getPlayer(testificate)?.renderMessage(
+                        server.getPlayer(testificate)?.sendInfo(
                             "The trial was automatically failed as the trialer has left for longer than 5 minutes",
                         )
                     },
@@ -288,7 +289,7 @@ class TrialOre : JavaPlugin(), Listener {
             logger.log(Level.SEVERE, "Error while executing command", throwable)
             return false
         }
-        sender.getIssuer<CommandSender>().renderMessage(exception.component.color(NamedTextColor.RED))
+        sender.getIssuer<CommandSender>().sendInfo(exception.component.color(NamedTextColor.RED))
         return true
     }
 }

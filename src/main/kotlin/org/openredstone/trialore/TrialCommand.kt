@@ -40,8 +40,8 @@ class TrialCommand(
     @Subcommand("info")
     @Description("Information about a TrialORE")
     fun onInfo(player: Player) {
-        player.renderMiniMessage("Current TrialORE version: <gray>$version")
-        player.renderMiniMessage(
+        player.sendInfoMM("Current TrialORE version: <gray>$version")
+        player.sendInfoMM(
             "For more details on commands, " +
                 "<aqua><click:open_url:'https://github.com/OpenRedstoneEngineers/TrialORE/blob/main/README.md'>" +
                 "<hover:show_text:'Go to README'>view the README</hover></click>",
@@ -52,7 +52,7 @@ class TrialCommand(
     @Description("Get the info of an individual from past trials")
     fun onHistory(player: Player, testificate: User) {
         val trials = trialORE.database.getTrials(testificate.uuid)
-        player.renderMiniMessage("<gray>${testificate.name} has been in ${trials.size} trials")
+        player.sendInfoMM("<gray>${testificate.name} has been in ${trials.size} trials")
         for (trialInfo in trials) {
             val state = if (trialInfo.passed) {
                 "<green>Passed</green>"
@@ -61,15 +61,15 @@ class TrialCommand(
             }
             val timestamp = trialInfo.start.toRelativeTimestamp()
             val trialer = trialORE.database.uuidToUsernameCache[trialInfo.trialer] ?: "Invalid UUID??"
-            player.renderMiniMessage(
+            player.sendInfoMM(
                 "<hover:show_text:'At <gray>${getDate(trialInfo.start)}<white>" +
-                    " by <gray>$trialer<white> (State: ${state})'><gray>Trial ${trialInfo.attempt}, $timestamp</hover>:",
+                    " by <gray>$trialer<white> (State: $state)'><gray>Trial ${trialInfo.attempt}, $timestamp</hover>:",
             )
             if (trialInfo.notes.isEmpty()) {
-                player.renderMiniMessage("<i>No notes")
+                player.sendInfoMM("<i>No notes")
             }
             trialInfo.notes.forEach { note ->
-                player.renderMessage(note)
+                player.sendInfo(note)
             }
         }
     }
@@ -96,8 +96,8 @@ class TrialCommand(
         }
         enforceRateLimits(testificate.uniqueId)
 
-        player.renderMessage("Starting trial of ${testificate.name}")
-        testificate.renderMessage("Starting trial with ${player.name}")
+        player.sendInfo("Starting trial of ${testificate.name}")
+        testificate.sendInfo("Starting trial with ${player.name}")
         trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
     }
 
@@ -112,7 +112,8 @@ class TrialCommand(
         val now = Instant.now()
         if (cooldownEndsAt > now) {
             val diff = Duration.between(now, cooldownEndsAt)
-            throw TrialOreException("That individual is currently rate limited and can trial again in ${diff.dayHourMin()}")
+            val then = "<hover:show_text:'At <gray>${getDate(cooldownEndsAt)}'>in ${diff.dayHourMin()}</hover>"
+            throw TrialOreException("That individual is currently rate limited and can trial again $then".render())
         }
     }
 
@@ -133,7 +134,7 @@ class TrialCommand(
         @Description("Add a note to an active trial")
         fun onNote(player: Player, trialMeta: TrialMeta, note: String) {
             trialORE.database.insertNote(trialMeta.trialId, note.trim())
-            player.renderMiniMessage("Saving note <gray>\"$note\"")
+            player.sendInfoMM("Saving note <gray>\"$note\"")
         }
 
         @Subcommand("list")
@@ -142,15 +143,15 @@ class TrialCommand(
         fun onList(player: Player, trialMeta: TrialMeta) {
             val notes = trialORE.database.getNotes(trialMeta.trialId)
             if (notes.isEmpty()) {
-                player.renderMiniMessage("No notes")
+                player.sendInfoMM("No notes")
                 return
             }
-            player.renderMiniMessage("Current notes:")
+            player.sendInfoMM("Current notes:")
             for ((key, value) in notes) {
                 val cleanedNote = value
                     .replace("\'", "\\\'")
                     .replace("\"", "\\\"")
-                player.renderMiniMessage(
+                player.sendInfoMM(
                     "<click:suggest_command:'/trial note edit $key ${cleanedNote}'>" +
                         "<hover:show_text:'Edit note'> <yellow>✏</hover></click><gray> |" +
                         "<click:suggest_command:'/trial note remove $key'>" +
@@ -166,7 +167,7 @@ class TrialCommand(
             // need to pass trialId here and in onRemove to protect other trials' notes
             if (!trialORE.database.updateNote(trialMeta.trialId, noteId, note))
                 throw TrialOreException("Invalid note id $noteId")
-            player.renderMiniMessage("Updated note <gray>$note</gray>")
+            player.sendInfoMM("Updated note <gray>$note</gray>")
         }
 
         @Subcommand("remove")
@@ -174,7 +175,7 @@ class TrialCommand(
         fun onRemove(player: Player, trialMeta: TrialMeta, noteId: Int) {
             val note = trialORE.database.deleteNote(trialMeta.trialId, noteId)
                 ?: throw TrialOreException("Invalid note id $noteId")
-            player.renderMiniMessage("Removed <gray>$note")
+            player.sendInfoMM("Removed <gray>$note")
         }
     }
 
@@ -186,8 +187,8 @@ class TrialCommand(
         @Subcommand("pass")
         @Description("Accept this testificate's trial")
         fun onPass(player: Player, trialMeta: TrialMeta) {
-            player.renderMessage("Testificate has passed their trial")
-            player.renderMessage("You may now communicate this pass with the testificate how you like")
+            player.sendInfo("Testificate has passed their trial")
+            player.sendInfo("You may now communicate this pass with the testificate how you like")
             trialORE.endTrial(player.uniqueId, trialMeta.trialId, passed = true)
         }
 
@@ -195,8 +196,8 @@ class TrialCommand(
         @Subcommand("fail")
         @Description("Fail this testificate's trial")
         fun onFail(player: Player, trialMeta: TrialMeta) {
-            player.renderMessage("Testificate has failed their trial")
-            player.renderMessage("You may now communicate this fail with the testificate how you like")
+            player.sendInfo("Testificate has failed their trial")
+            player.sendInfo("You may now communicate this fail with the testificate how you like")
             trialORE.endTrial(player.uniqueId, trialMeta.trialId, passed = false)
         }
     }
