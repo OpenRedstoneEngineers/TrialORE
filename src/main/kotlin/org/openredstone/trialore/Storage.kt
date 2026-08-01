@@ -122,14 +122,18 @@ class Storage(
         }
     }
 
-    fun updateNote(noteId: Int, note: String) = transaction(database) {
-        Note.update({ Note.id eq noteId }) {
+    /** Returns true if successful, false if the note doesn't exist */
+    fun updateNote(trialId: Int, noteId: Int, note: String) = transaction(database) {
+        Note.update({ (Note.trial_id eq trialId) and (Note.id eq noteId) }) {
             it[value] = note
-        }
+        } == 1 // 1 row changed if successful
     }
 
-    fun deleteNote(noteId: Int) = transaction(database) {
-        Note.deleteWhere { id eq noteId }
+    /** Returns the deleted note or null if the note doesn't exist */
+    fun deleteNote(trialId: Int, noteId: Int) = transaction(database) {
+        Note.deleteReturning { (Note.trial_id eq trialId) and (Note.id eq noteId) }
+            .map { it[Note.value] }
+            .singleOrNull()
     }
 
     fun getNotes(trialId: Int): Map<Int, String> = transaction(database) {

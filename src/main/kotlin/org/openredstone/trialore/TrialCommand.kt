@@ -139,21 +139,17 @@ class TrialCommand(
         @Subcommand("edit")
         @Description("Edit note")
         fun onEdit(player: Player, trialMeta: TrialMeta, noteId: Int, note: String) {
-            val notes = trialORE.database.getNotes(trialMeta.trialId)
-            if (notes.isEmpty()) throw TrialOreException("No notes found")
-            if (!notes.keys.contains(noteId)) throw TrialOreException("Invalid note $note")
-            trialORE.database.updateNote(noteId, note)
+            // need to pass trialId here and in onRemove to protect other trials' notes
+            if (!trialORE.database.updateNote(trialMeta.trialId, noteId, note))
+                throw TrialOreException("Invalid note id $noteId")
             player.renderMiniMessage("Updated note <gray>$note</gray>")
         }
 
         @Subcommand("remove")
         @Description("Remove a note")
-        fun onRemove(player: Player, trialMeta: TrialMeta, note: Int) {
-            val notes = trialORE.database.getNotes(trialMeta.trialId)
-            if (notes.isEmpty()) throw TrialOreException("No notes found")
-            if (!notes.keys.contains(note)) throw TrialOreException("Invalid note $note")
-            trialORE.database.deleteNote(note)
-            player.renderMiniMessage("Removed <gray>${notes[note]}")
+        fun onRemove(player: Player, trialMeta: TrialMeta, noteId: Int) {
+            val note = trialORE.database.deleteNote(trialMeta.trialId, noteId) ?: throw TrialOreException("Invalid note id $noteId")
+            player.renderMiniMessage("Removed <gray>$note")
         }
     }
 
