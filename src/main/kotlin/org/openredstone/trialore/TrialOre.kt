@@ -197,10 +197,11 @@ class TrialOre : JavaPlugin(), Listener {
         }
     }
 
-    fun startTrial(trialer: UUID, testificate: UUID, app: String) {
+    fun startTrial(trialer: UUID, testificate: UUID, app: String): Int {
         val trialId = database.insertTrial(trialer, testificate, app)
         trialMapping[trialer] = TrialMeta(testificate, trialId)
         setLpParent(testificate, config.testificateGroup)
+        return trialId
     }
 
     fun endTrial(trialer: UUID, trialId: Int, passed: Boolean, finalNote: String? = null) {

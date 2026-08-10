@@ -9,7 +9,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
-import java.util.*
+import java.util.UUID
 
 fun getDate(timestamp: Instant) = LocalDateTime.ofInstant(timestamp, ZoneOffset.UTC)
 
@@ -78,7 +78,7 @@ class TrialCommand(
     @Subcommand("start")
     @Description("Start a trial")
     @CommandCompletion("@players app")
-    fun onStart(player: Player, @Flags("other") testificate: Player, @Single app: String) {
+    fun onStart(player: Player, @Flags("other") testificate: Player, @Single app: String, @Optional @Single force: String?) {
         if (player.uniqueId in trialORE.trialMapping) {
             throw TrialOreException("You are already in the act of trialing")
         }
@@ -94,11 +94,17 @@ class TrialCommand(
         if (!app.startsWith("https://discourse.openredstone.org/")) {
             throw TrialOreException("Invalid app: $app")
         }
-        enforceRateLimits(testificate.uniqueId)
+
+        if (force != "--force") {
+            enforceRateLimits(testificate.uniqueId)
+        } else {
+            player.sendInfo("--force passed, starting trial regardless of rate limits.")
+        }
 
         player.sendInfo("Starting trial of ${testificate.name}")
         testificate.sendInfo("Starting trial with ${player.name}")
-        trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
+        val trialId = trialORE.startTrial(player.uniqueId, testificate.uniqueId, app)
+        trialORE.database.insertNote(trialId, "Trial started with --force, rate limits not enforced.")
     }
 
     fun enforceRateLimits(testificate: UUID) {
