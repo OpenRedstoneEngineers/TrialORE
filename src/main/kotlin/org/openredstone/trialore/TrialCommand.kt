@@ -114,7 +114,7 @@ class TrialCommand(
         val (attempts, perDuration) =
             if (fails >= 3) 1 to Duration.ofDays(31) else 2 to Duration.ofDays(7)
         val secondaryCooldownEndsAt = rateLimitEndsAt(trials, attempts, perDuration)
-        val cooldownEndsAt = max(primaryCooldownEndsAt, secondaryCooldownEndsAt)
+        val cooldownEndsAt = maxOf(primaryCooldownEndsAt, secondaryCooldownEndsAt)
         val now = Instant.now()
         if (cooldownEndsAt > now) {
             val diff = Duration.between(now, cooldownEndsAt)
@@ -128,8 +128,6 @@ class TrialCommand(
         val trial = trials.getOrNull(trials.size - attempts) ?: return Instant.MIN
         return trial.start + perDuration
     }
-
-    fun max(a: Instant, b: Instant): Instant = if (a < b) b else a
 
     @Subcommand("note")
     @Description("Manage notes")
