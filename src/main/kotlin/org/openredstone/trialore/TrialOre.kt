@@ -5,82 +5,98 @@ import co.aikar.commands.CommandIssuer
 import co.aikar.commands.PaperCommandManager
 import co.aikar.commands.RegisteredCommand
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import net.luckperms.api.LuckPerms
 import net.luckperms.api.LuckPermsProvider
 import net.luckperms.api.node.types.InheritanceNode
-import org.bukkit.entity.Player
+import org.bukkit.command.CommandSender
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.util.*
 import java.util.logging.Level
+import kotlin.jvm.optionals.getOrNull
 
-val VERSION = "1.1"
+const val VERSION = BuildConfig.VERSION
 
 const val baseMessage = "<dark_gray>[<gray>TrialORE<dark_gray>]<white> <message>"
 
-fun Player.renderMessage(value: Component) = this.sendMessage(
+fun Audience.sendInfo(value: Component) = sendMessage(
     MiniMessage.miniMessage().deserialize(
         baseMessage,
-        Placeholder.component("message", value)
-    )
+        Placeholder.component("message", value),
+    ),
 )
-fun Player.renderMessage(value: String) = renderMessage(Component.text(value))
-fun Player.renderMiniMessage(value: String) = renderMessage(MiniMessage.miniMessage().deserialize(value))
 
-internal fun <T> Optional<T>.toNullable(): T? = this.orElse(null)
+fun Audience.sendInfo(value: String) = sendInfo(Component.text(value))
+fun Audience.sendInfoMM(value: String) =
+    sendInfo(value.render())
+
+fun Component.toPlainText(): String = PlainTextComponentSerializer.plainText().serialize(this)
+fun String.render(): Component = MiniMessage.miniMessage().deserialize(this)
 
 data class TrialOreConfig(
     val studentGroup: String = "student",
     val testificateGroup: String = "testificate",
     val builderGroup: String = "builder",
-    val webhook: String = "webhook",
-    val abandonForgiveness: Long = 6000
+    val webhook: String = "https://discord.com.changeme/api/webhooks/XXXX/XXXXXXXXXXXXXXXX",
+    val abandonForgiveness: Long = 6000,
 )
 
 data class TrialMeta(
     val testificate: UUID,
-    val trialId: Int
+    val trialId: Int,
 )
+
+data class User(val uuid: UUID, val name: String)
+
+fun tryParseUUID(s: String) = try {
+    UUID.fromString(s)
+} catch (_: IllegalArgumentException) {
+    null
+}
 
 class TrialOre : JavaPlugin(), Listener {
     lateinit var database: Storage
     lateinit var luckPerms: LuckPerms
     lateinit var config: TrialOreConfig
-    val trialMapping: MutableMap<UUID, Pair<UUID, Int>> = mutableMapOf()
+    val trialMapping: MutableMap<UUID, TrialMeta> = mutableMapOf()
     private val mapper = ObjectMapper(YAMLFactory())
     override fun onEnable() {
         loadConfig()
-        database = Storage(this.dataFolder.resolve("trials.db").toString())
+        database = Storage(dataFolder.resolve("trials.db").toString())
         luckPerms = LuckPermsProvider.get()
         config = loadConfig()
         server.pluginManager.registerEvents(this, this)
         PaperCommandManager(this).apply {
-            commandConditions.addCondition("notTrialing") {
-                // Condition "notTrialing" will fail if the person is trialing
-                if (trialMapping.containsKey(it.issuer.player.uniqueId)) {
-                    throw TrialOreException("You are already in the act of trialing")
-                }
-            }
-            commandConditions.addCondition("trialing") {
-                // Condition "trialing" will fail if the person is not trialing
-                if (!trialMapping.containsKey(it.issuer.player.uniqueId)) {
-                    throw TrialOreException("You are not trialing anyone")
-                }
-            }
             commandContexts.registerIssuerOnlyContext(TrialMeta::class.java) { context ->
-                val meta = trialMapping[context.player.uniqueId]
-                    ?: throw TrialOreException("Invalid trial mapping. This is likely a bug")
-                TrialMeta(meta.first, meta.second)
+                trialMapping[context.player.uniqueId]
+                    ?: throw TrialOreException("You are not trialing anyone")
+            }
+            commandContexts.registerContext(User::class.java) { context ->
+                val arg = context.popFirstArg()
+                val uuid = server.getPlayer(arg)?.uniqueId
+                    ?: tryParseUUID(arg)
+                    ?: database.usernameToUuidCache[arg]
+                    ?: throw TrialOreException("Unknown user, please provide a known username or UUID")
+                User(uuid, database.uuidToUsernameCache[uuid] ?: uuid.toString())
             }
             commandCompletions.registerCompletion("usernameCache") { database.usernameToUuidCache.keys }
+            commandCompletions.setDefaultCompletion("usernameCache", User::class.java)
             registerCommand(TrialCommand(this@TrialOre, VERSION))
             setDefaultExceptionHandler(::handleCommandException, false)
         }
@@ -88,10 +104,7 @@ class TrialOre : JavaPlugin(), Listener {
 
     override fun onDisable() {
         trialMapping.forEach { (trialer, meta) ->
-            val testificate = meta.first
-            val trialId = meta.second
-            endTrial(testificate, trialId, false,
-                "This trial was automatically ended as the server went offline")
+            endTrial(trialer, meta.trialId, false, "This trial was automatically ended as the server went offline")
         }
     }
 
@@ -101,21 +114,30 @@ class TrialOre : JavaPlugin(), Listener {
             dataFolder.mkdir()
         }
         val configFile = File(dataFolder, "config.yml")
-        // does not overwrite or throw
-        configFile.createNewFile()
-        val config = mapper.readTree(configFile)
-        val loadedConfig = mapper.treeToValue(config, TrialOreConfig::class.java)
+        val config = if (configFile.exists()) {
+            try {
+                // this may also return null (although not for empty files, unlike readTree)
+                mapper.readValue(configFile, TrialOreConfig::class.java)
+            } catch (e: Exception) {
+                // don't ignore malformed config
+                throw RuntimeException("Failed to load config.yml", e)
+            }
+        } else {
+            null
+        } ?: TrialOreConfig()
+        // write in case there are new defaults (especially if the file doesn't exist)
+        // yes, this is a bit inefficient (in case of no changes), but it doesn't really matter
+        mapper.writeValue(configFile, config)
         logger.info("Loaded config.yml")
-        return loadedConfig
+        return config
     }
 
     @EventHandler
     fun onJoin(event: PlayerJoinEvent) {
         database.ensureCachedUsername(event.player.uniqueId, event.player.name)
-        trialMapping.forEach { (trialer, meta) ->
-            val testificate = meta.first
-            if ( testificate == event.player.uniqueId ) {
-                setLpParent(testificate, config.testificateGroup)
+        trialMapping.forEach { (_, meta) ->
+            if (meta.testificate == event.player.uniqueId) {
+                setLpParent(meta.testificate, config.testificateGroup)
             }
         }
     }
@@ -124,109 +146,119 @@ class TrialOre : JavaPlugin(), Listener {
     fun onLeave(event: PlayerQuitEvent) {
         val uuid = event.player.uniqueId
         trialMapping.forEach { (trialer, meta) ->
-            val testificate = meta.first
-            val trialId = meta.second
+            val (testificate, trialId) = meta
+            // NOTE: server.getPlayer only returns online players
             if (uuid == testificate) {
-                server.onlinePlayers.firstOrNull { it.uniqueId == trialer} ?.renderMessage(
+                server.getPlayer(trialer)?.sendInfo(
                     "The testificate has left. They have 5 minutes to rejoin before this trial is " +
-                        "automatically invalidated"
+                        "automatically invalidated",
                 )
                 setLpParent(testificate, config.studentGroup)
-                this.server.scheduler.runTaskLater(this, Runnable {
-                    if (this.server.onlinePlayers.map { it.uniqueId }.contains(testificate)) {
-                        // Testificate has reconnected, don't end
-                        return@Runnable
-                    }
-                    // END TRIAL!!!
-                    endTrial(
-                        trialer, trialId, false,
-                        "The trial was automatically ended due to the trialer or testificate leaving"
-                    )
-                    server.onlinePlayers.firstOrNull { it.uniqueId == trialer }?.renderMessage(
-                        "The trial was automatically failed as the testificate has left for longer than 5 minutes"
-                    )
-                }, config.abandonForgiveness)
+                server.scheduler.runTaskLater(
+                    this,
+                    Runnable {
+                        if (trialMapping[trialer]?.trialId != trialId) {
+                            // the trial has already ended
+                            return@Runnable
+                        }
+                        if (server.getPlayer(testificate) != null) {
+                            // Testificate has reconnected, don't end
+                            return@Runnable
+                        }
+                        // END TRIAL!!!
+                        endTrial(
+                            trialer, trialId, false,
+                            "The trial was automatically ended due to the trialer or testificate leaving",
+                        )
+                        server.getPlayer(trialer)?.sendInfo(
+                            "The trial was automatically failed as the testificate has left for longer than 5 minutes",
+                        )
+                    },
+                    config.abandonForgiveness,
+                )
             }
             if (uuid == trialer) {
-                server.onlinePlayers.firstOrNull { it.uniqueId == testificate }?.renderMessage(
+                server.getPlayer(testificate)?.sendInfo(
                     "The trialer has left. They have 5 minutes to rejoin before this trial is " +
-                        "automatically invalidated"
+                        "automatically invalidated",
                 )
-                this.server.scheduler.runTaskLater(this, Runnable {
-                    if (this.server.onlinePlayers.map { it.uniqueId }.contains(trialer)) {
-                        // Trialer has reconnected, don't end
-                        return@Runnable
-                    }
-                    // END TRIAL!!!
-                    endTrial(
-                        trialer, trialId, false,
-                        "The trial was automatically ended due to the trialer or testificate leaving"
-                    )
-                    server.onlinePlayers.firstOrNull { it.uniqueId == testificate }?.renderMessage(
-                        "The trial was automatically failed as the trialer has left for longer than 5 minutes"
-                    )
-                }, config.abandonForgiveness)
+                server.scheduler.runTaskLater(
+                    this,
+                    Runnable {
+                        if (trialMapping[trialer]?.trialId != trialId) {
+                            // the trial has already ended
+                            return@Runnable
+                        }
+                        if (server.getPlayer(trialer) != null) {
+                            // Trialer has reconnected, don't end
+                            return@Runnable
+                        }
+                        // END TRIAL!!!
+                        endTrial(
+                            trialer, trialId, false,
+                            "The trial was automatically ended due to the trialer or testificate leaving",
+                        )
+                        server.getPlayer(testificate)?.sendInfo(
+                            "The trial was automatically failed as the trialer has left for longer than 5 minutes",
+                        )
+                    },
+                    config.abandonForgiveness,
+                )
             }
         }
     }
 
-    fun startTrial(trialer: UUID, testificate: UUID, app: String) {
-        val trialId = this.database.insertTrial(trialer, testificate, app)
-        this.trialMapping[trialer] = Pair(testificate, trialId)
+    fun startTrial(trialer: UUID, testificate: UUID, app: String): Int {
+        val trialId = database.insertTrial(trialer, testificate, app)
+        trialMapping[trialer] = TrialMeta(testificate, trialId)
         setLpParent(testificate, config.testificateGroup)
+        return trialId
     }
 
     fun endTrial(trialer: UUID, trialId: Int, passed: Boolean, finalNote: String? = null) {
+        val (testificate, _) = checkNotNull(trialMapping.remove(trialer)) { "endTrial: not taking a trial" }
         if (finalNote != null) {
-            this.database.insertNote(trialId, finalNote)
+            database.insertNote(trialId, finalNote)
         }
-        this.database.endTrial(trialId, passed)
-        val testificate = this.trialMapping[trialer]?.first
-            ?: throw TrialOreException("Invalid trial mapping. This is likely a bug")
-        this.trialMapping.remove(trialer)
+        database.endTrial(trialId, passed)
         if (passed) {
             setLpParent(testificate, config.builderGroup)
         } else {
             setLpParent(testificate, config.studentGroup)
         }
-        sendReport(database.getTrialInfo(trialId), database.getTrialCount(testificate))
+        sendReport(database.getTrialInfo(trialId, database.getTrialCount(testificate))) // jank
     }
 
     fun getParent(uuid: UUID): String? = luckPerms.userManager.getUser(uuid)?.primaryGroup
 
     private fun setLpParent(uuid: UUID, parent: String) {
-        luckPerms.userManager.getUser(uuid)?.let { user ->
+        luckPerms.userManager.loadUser(uuid).thenCompose { user ->
             val oldNode = InheritanceNode.builder(user.primaryGroup).value(true).build()
             user.data().remove(oldNode)
             val newNode = InheritanceNode.builder(parent).value(true).build()
             user.data().add(newNode)
-            user.setPrimaryGroup(parent)
+            user.primaryGroup = parent
             luckPerms.userManager.saveUser(user).thenRun {
-                luckPerms.messagingService.toNullable()?.pushUserUpdate(user)
+                luckPerms.messagingService.getOrNull()?.pushUserUpdate(user)
             }
         }
     }
 
-    private fun sendReport(trialInfo: TrialInfo, trialCount: Int) {
+    private fun sendReport(trialInfo: TrialInfo) {
         val lines = mutableListOf(
             "**Trialer**: ${database.uuidToUsernameCache[trialInfo.trialer]}",
-            "**Attempt**: $trialCount",
-            "**Start**: <t:${trialInfo.start}:F>",
-            "**End**: <t:${trialInfo.end}:F>",
-            "**Notes**:"
+            "**Attempt**: ${trialInfo.attempt}",
+            "**Start**: <t:${trialInfo.start.epochSecond}:F>",
+            "**End**: <t:${trialInfo.end.epochSecond}:F>",
+            "**Notes**:",
         )
         trialInfo.notes.forEach { note ->
             lines.add("* $note")
         }
-        val result = if (trialInfo.passed) {
-            "*Passed*"
+        val (result, color) = if (trialInfo.passed) {
+            "*Passed*" to 0x5fff58
         } else {
-            "*Failed*"
-        }
-        val color = if(trialInfo.passed) {
-            0x5fff58
-        } else {
-            0xff5858
+            "*Failed*" to 0xff5858
         }
         val payload = mapOf(
             "embeds" to listOf(
@@ -238,13 +270,24 @@ class TrialOre : JavaPlugin(), Listener {
                     "fields" to listOf(
                         mapOf(
                             "name" to "State",
-                            "value" to result
-                        )
-                    )
-                )
-            )
+                            "value" to result,
+                        ),
+                    ),
+                ),
+            ),
         )
-        khttp.post(config.webhook, json = payload)
+        postWebhook(payload)
+    }
+
+    private fun postWebhook(payload: Any) {
+        val req = HttpRequest.newBuilder(URI(config.webhook))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(ObjectMapper().writeValueAsString(payload)))
+            .build()
+        val status = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.discarding()).statusCode()
+        if (status != 204) {
+            logger.warning("Webhook POST request returned status code $status")
+        }
     }
 
     private fun handleCommandException(
@@ -252,15 +295,13 @@ class TrialOre : JavaPlugin(), Listener {
         registeredCommand: RegisteredCommand<*>,
         sender: CommandIssuer,
         args: List<String>,
-        throwable: Throwable
+        throwable: Throwable,
     ): Boolean {
         val exception = throwable as? TrialOreException ?: run {
             logger.log(Level.SEVERE, "Error while executing command", throwable)
             return false
         }
-        val message = exception.message ?: "Something went wrong!"
-        val player = server.getPlayer(sender.uniqueId)!!
-        player.renderMiniMessage("<red>$message</red>")
+        sender.getIssuer<CommandSender>().sendInfo(exception.component.color(NamedTextColor.RED))
         return true
     }
 }
