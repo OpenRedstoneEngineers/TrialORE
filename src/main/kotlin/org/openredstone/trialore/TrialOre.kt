@@ -5,6 +5,7 @@ import co.aikar.commands.CommandIssuer
 import co.aikar.commands.PaperCommandManager
 import co.aikar.commands.RegisteredCommand
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.text.Component
@@ -52,7 +53,7 @@ data class TrialOreConfig(
     val studentGroup: String = "student",
     val testificateGroup: String = "testificate",
     val builderGroup: String = "builder",
-    val webhook: String = "webhook",
+    val webhook: String = "https://discord.com.changeme/api/webhooks/XXXX/XXXXXXXXXXXXXXXX",
     val abandonForgiveness: Long = 6000,
 )
 
@@ -113,12 +114,22 @@ class TrialOre : JavaPlugin(), Listener {
             dataFolder.mkdir()
         }
         val configFile = File(dataFolder, "config.yml")
-        // does not overwrite or throw
-        configFile.createNewFile()
-        val config = mapper.readTree(configFile)
-        val loadedConfig = mapper.treeToValue(config, TrialOreConfig::class.java)
+        val config = if (configFile.exists()) {
+            try {
+                // this may also return null (although not for empty files, unlike readTree)
+                mapper.readValue(configFile, TrialOreConfig::class.java)
+            } catch (e: Exception) {
+                // don't ignore malformed config
+                throw RuntimeException("Failed to load config.yml", e)
+            }
+        } else {
+            null
+        } ?: TrialOreConfig()
+        // write in case there are new defaults (especially if the file doesn't exist)
+        // yes, this is a bit inefficient (in case of no changes), but it doesn't really matter
+        mapper.writeValue(configFile, config)
         logger.info("Loaded config.yml")
-        return loadedConfig
+        return config
     }
 
     @EventHandler
